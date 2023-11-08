@@ -1,2 +1,2 @@
 # gravity-delphi
-Delphi binding for Gravity programming language
+Delphi binding for [Gravity](https://github.com/marcobambini/gravity) programming language
