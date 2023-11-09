@@ -117,7 +117,7 @@ const
   GRAVITY_CLASS_INT_NAME = 'Int';
   GRAVITY_CLASS_FLOAT_NAME = 'Float';
   GRAVITY_CLASS_BOOL_NAME = 'Bool';
-  GRAVITY_CLASS_STRING_NAM = 'String';
+  GRAVITY_CLASS_STRING_NAME = 'String';
   GRAVITY_CLASS_OBJECT_NAME = 'Object';
   GRAVITY_CLASS_CLASS_NAME = 'Class';
   GRAVITY_CLASS_NULL_NAME = 'Null';
@@ -1014,6 +1014,13 @@ type
   Tgravity_function_size = function(vm: Pgravity_vm; f: Pgravity_function_t)
     : UInt32; cdecl;
 
+  Tgravity_closure_blacken = procedure(vm: Pgravity_vm; closure: Pgravity_closure_t); cdecl;
+  Tgravity_closure_dec_refcount = procedure(vm: Pgravity_vm; closure: Pgravity_closure_t); cdecl;
+  Tgravity_closure_inc_refcount = procedure(vm: Pgravity_vm; closure: Pgravity_closure_t); cdecl;
+  Tgravity_closure_free = procedure(vm: Pgravity_vm; closure: Pgravity_closure_t); cdecl;
+  Tgravity_closure_size = function(vm: Pgravity_vm; closure: Pgravity_closure_t): UInt32; cdecl;
+  Tgravity_closure_new = function(vm: Pgravity_vm; f: Pgravity_function_t): Pgravity_closure_t; cdecl;
+
   Tgravity_upvalue_blacken = procedure(vm: Pgravity_vm;
     upvalue: Pgravity_upvalue_t); cdecl;
   Tgravity_upvalue_free = procedure(vm: Pgravity_vm;
@@ -1365,6 +1372,13 @@ type
     function gravity_function_size(vm: Pgravity_vm;
       f: Pgravity_function_t): UInt32;
 
+    procedure gravity_closure_blacken(vm: Pgravity_vm; closure: Pgravity_closure_t);
+    procedure gravity_closure_dec_refcount(vm: Pgravity_vm; closure: Pgravity_closure_t);
+    procedure gravity_closure_inc_refcount(vm: Pgravity_vm; closure: Pgravity_closure_t);
+    procedure gravity_closure_free(vm: Pgravity_vm; closure: Pgravity_closure_t);
+    function gravity_closure_size(vm: Pgravity_vm; closure: Pgravity_closure_t): UInt32;
+    function gravity_closure_new(vm: Pgravity_vm; f: Pgravity_function_t): Pgravity_closure_t;
+
     procedure gravity_upvalue_blacken(vm: Pgravity_vm;
       upvalue: Pgravity_upvalue_t);
     procedure gravity_upvalue_free(vm: Pgravity_vm;
@@ -1662,6 +1676,29 @@ type
     function VALUE_AS_INT(val: Pgravity_value_t): gravity_int_t;
     function VALUE_AS_BOOL(val: Pgravity_value_t): gravity_int_t;
 
+    function VALUE_ISA_FUNCTION(v: gravity_value_t): boolean;
+    function VALUE_ISA_INSTANCE(v: gravity_value_t): boolean;
+    function VALUE_ISA_CLOSURE(v: gravity_value_t): boolean;
+    function VALUE_ISA_FIBER(v: gravity_value_t): boolean;
+    function VALUE_ISA_CLASS(v: gravity_value_t): boolean;
+    function VALUE_ISA_STRING(v: gravity_value_t): boolean;
+    function VALUE_ISA_INT(v: gravity_value_t): boolean;
+    function VALUE_ISA_FLOAT(v: gravity_value_t): boolean;
+    function VALUE_ISA_BOOL(v: gravity_value_t): boolean;
+    function VALUE_ISA_LIST(v: gravity_value_t): boolean;
+    function VALUE_ISA_MAP(v: gravity_value_t): boolean;
+    function VALUE_ISA_RANGE(v: gravity_value_t): boolean;
+    function VALUE_ISA_BASIC_TYPE(v: gravity_value_t): boolean;
+    function VALUE_ISA_NULLCLASS(v: gravity_value_t): boolean;
+    function VALUE_ISA_NULL(v: gravity_value_t): boolean;
+    function VALUE_ISA_UNDEFINED(v: gravity_value_t): boolean;
+    function VALUE_ISA_CALLABLE(v: gravity_value_t): boolean;
+    function VALUE_ISA_VALID(v: gravity_value_t): boolean;
+    function VALUE_ISA_NOTVALID(v: gravity_value_t): boolean;
+    function VALUE_ISA_ERROR(v: gravity_value_t): boolean;
+
+    function NEW_FUNCTION(fptr: gravity_c_internal): Pgravity_function_t;
+    function NEW_CLOSURE_VALUE(fptr: gravity_c_internal): gravity_value_t;
   end;
 
   TRegisterGVInterface = function: IGVInterface;
@@ -1681,6 +1718,24 @@ type
   private
     FGVLibrary: HMODULE;
 
+    Fgravity_class_int: Pgravity_class_t;
+    Fgravity_class_float: Pgravity_class_t;
+    Fgravity_class_bool: Pgravity_class_t;
+    Fgravity_class_null: Pgravity_class_t;
+
+    Fgravity_class_string: Pgravity_class_t;
+    Fgravity_class_object: Pgravity_class_t;
+    Fgravity_class_function: Pgravity_class_t;
+    Fgravity_class_closure: Pgravity_class_t;
+    Fgravity_class_fiber: Pgravity_class_t;
+    Fgravity_class_class: Pgravity_class_t;
+    Fgravity_class_instance: Pgravity_class_t;
+    Fgravity_class_list: Pgravity_class_t;
+    Fgravity_class_map: Pgravity_class_t;
+    Fgravity_class_range: Pgravity_class_t;
+    Fgravity_class_upvalue: Pgravity_class_t;
+    Fgravity_class_system: Pgravity_class_t;
+
     Fgravity_module_new: Tgravity_module_new;
     Fgravity_module_free: Tgravity_module_free;
     Fgravity_module_blacken: Tgravity_module_blacken;
@@ -1699,6 +1754,14 @@ type
     Fgravity_function_serialize: Tgravity_function_serialize;
     Fgravity_function_setxdata: Tgravity_function_setxdata;
     Fgravity_function_size: Tgravity_function_size;
+
+    Fgravity_closure_blacken: Tgravity_closure_blacken;
+    Fgravity_closure_dec_refcount: Tgravity_closure_dec_refcount;
+    Fgravity_closure_inc_refcount: Tgravity_closure_inc_refcount;
+    Fgravity_closure_free: Tgravity_closure_free;
+    Fgravity_closure_size: Tgravity_closure_size;
+    Fgravity_closure_new: Tgravity_closure_new;
+
     Fgravity_upvalue_blacken: Tgravity_upvalue_blacken;
     Fgravity_upvalue_free: Tgravity_upvalue_free;
     Fgravity_upvalue_new: Tgravity_upvalue_new;
@@ -1864,6 +1927,23 @@ type
     Fgravity_hash_keyfree: Tgravity_hash_keyfree;
     Fgravity_hash_keyvaluefree: Tgravity_hash_keyvaluefree;
     Fgravity_hash_valuefree: Tgravity_hash_valuefree;
+
+    function GetClassClosure: Pgravity_class_t;
+    function GetClassBool: Pgravity_class_t;
+    function GetClassClass: Pgravity_class_t;
+    function GetClassFiber: Pgravity_class_t;
+    function GetClassFloat: Pgravity_class_t;
+    function GetClassFunction: Pgravity_class_t;
+    function GetClassInstance: Pgravity_class_t;
+    function GetClassInt: Pgravity_class_t;
+    function GetClassList: Pgravity_class_t;
+    function GetClassMap: Pgravity_class_t;
+    function GetClassNull: Pgravity_class_t;
+    function GetClassObject: Pgravity_class_t;
+    function GetClassRange: Pgravity_class_t;
+    function GetClassString: Pgravity_class_t;
+    function GetClassSystem: Pgravity_class_t;
+    function GetClassUpvalue: Pgravity_class_t;
   public
     class function DefaultInstance: IGVInterface;
 
@@ -1909,6 +1989,13 @@ type
     procedure gravity_function_setxdata(f: Pgravity_function_t; xdata: Pointer);
     function gravity_function_size(vm: Pgravity_vm;
       f: Pgravity_function_t): UInt32;
+
+    procedure gravity_closure_blacken(vm: Pgravity_vm; closure: Pgravity_closure_t);
+    procedure gravity_closure_dec_refcount(vm: Pgravity_vm; closure: Pgravity_closure_t);
+    procedure gravity_closure_inc_refcount(vm: Pgravity_vm; closure: Pgravity_closure_t);
+    procedure gravity_closure_free(vm: Pgravity_vm; closure: Pgravity_closure_t);
+    function gravity_closure_size(vm: Pgravity_vm; closure: Pgravity_closure_t): UInt32;
+    function gravity_closure_new(vm: Pgravity_vm; f: Pgravity_function_t): Pgravity_closure_t;
 
     procedure gravity_upvalue_blacken(vm: Pgravity_vm;
       upvalue: Pgravity_upvalue_t);
@@ -2206,6 +2293,48 @@ type
     function VALUE_AS_FLOAT(val: Pgravity_value_t): gravity_float_t;
     function VALUE_AS_INT(val: Pgravity_value_t): gravity_int_t;
     function VALUE_AS_BOOL(val: Pgravity_value_t): gravity_int_t;
+
+    function VALUE_ISA_FUNCTION(v: gravity_value_t): boolean;
+    function VALUE_ISA_INSTANCE(v: gravity_value_t): boolean;
+    function VALUE_ISA_CLOSURE(v: gravity_value_t): boolean;
+    function VALUE_ISA_FIBER(v: gravity_value_t): boolean;
+    function VALUE_ISA_CLASS(v: gravity_value_t): boolean;
+    function VALUE_ISA_STRING(v: gravity_value_t): boolean;
+    function VALUE_ISA_INT(v: gravity_value_t): boolean;
+    function VALUE_ISA_FLOAT(v: gravity_value_t): boolean;
+    function VALUE_ISA_BOOL(v: gravity_value_t): boolean;
+    function VALUE_ISA_LIST(v: gravity_value_t): boolean;
+    function VALUE_ISA_MAP(v: gravity_value_t): boolean;
+    function VALUE_ISA_RANGE(v: gravity_value_t): boolean;
+    function VALUE_ISA_BASIC_TYPE(v: gravity_value_t): boolean;
+    function VALUE_ISA_NULLCLASS(v: gravity_value_t): boolean;
+    function VALUE_ISA_NULL(v: gravity_value_t): boolean;
+    function VALUE_ISA_UNDEFINED(v: gravity_value_t): boolean;
+    function VALUE_ISA_CALLABLE(v: gravity_value_t): boolean;
+    function VALUE_ISA_VALID(v: gravity_value_t): boolean;
+    function VALUE_ISA_NOTVALID(v: gravity_value_t): boolean;
+    function VALUE_ISA_ERROR(v: gravity_value_t): boolean;
+
+    function NEW_FUNCTION(fptr: gravity_c_internal): Pgravity_function_t;
+    function NEW_CLOSURE_VALUE(fptr: gravity_c_internal): gravity_value_t;
+
+    property gravity_class_int: Pgravity_class_t read GetClassInt;
+    property gravity_class_float: Pgravity_class_t read GetClassFloat;
+    property gravity_class_bool: Pgravity_class_t read GetClassBool;
+    property gravity_class_null: Pgravity_class_t read GetClassNull;
+
+    property gravity_class_string: Pgravity_class_t read GetClassString;
+    property gravity_class_object: Pgravity_class_t read GetClassObject;
+    property gravity_class_function: Pgravity_class_t read GetClassFunction;
+    property gravity_class_closure: Pgravity_class_t read GetClassClosure;
+    property gravity_class_fiber: Pgravity_class_t read GetClassFiber;
+    property gravity_class_class: Pgravity_class_t read GetClassClass;
+    property gravity_class_instance: Pgravity_class_t read GetClassInstance;
+    property gravity_class_list: Pgravity_class_t read GetClassList;
+    property gravity_class_map: Pgravity_class_t read GetClassMap;
+    property gravity_class_range: Pgravity_class_t read GetClassRange;
+    property gravity_class_upvalue: Pgravity_class_t read GetClassUpvalue;
+    property gravity_class_system: Pgravity_class_t read GetClassSystem;
   end;
 
 {$IFDEF GRAVITY_STATIC_LINK}
@@ -2261,6 +2390,13 @@ procedure _gravity_function_setxdata(f: Pgravity_function_t; xdata: Pointer);
   cdecl; external LIBNAME_DLL name _PU + 'gravity_function_setxdata';
 function _gravity_function_size(vm: Pgravity_vm; f: Pgravity_function_t)
   : UInt32; cdecl; external LIBNAME_DLL name _PU + 'gravity_function_size';
+
+procedure _gravity_closure_blacken(vm: Pgravity_vm; closure: Pgravity_closure_t); cdecl; external LIBNAME_DLL name _PU + 'gravity_closure_blacken';
+procedure _gravity_closure_dec_refcount(vm: Pgravity_vm; closure: Pgravity_closure_t); cdecl; external LIBNAME_DLL name _PU + 'gravity_closure_dec_refcount';
+procedure _gravity_closure_inc_refcount(vm: Pgravity_vm; closure: Pgravity_closure_t); cdecl; external LIBNAME_DLL name _PU + 'gravity_closure_inc_refcount';
+procedure _gravity_closure_free(vm: Pgravity_vm; closure: Pgravity_closure_t); cdecl; external LIBNAME_DLL name _PU + 'gravity_closure_free';
+function _gravity_closure_size(vm: Pgravity_vm; closure: Pgravity_closure_t): UInt32; cdecl; external LIBNAME_DLL name _PU + 'gravity_closure_size';
+function _gravity_closure_new(vm: Pgravity_vm; f: Pgravity_function_t): Pgravity_closure_t; cdecl; external LIBNAME_DLL name _PU + 'gravity_closure_new';
 
 procedure _gravity_upvalue_blacken(vm: Pgravity_vm;
   upvalue: Pgravity_upvalue_t); cdecl;
@@ -2683,6 +2819,24 @@ constructor TGVInterface.Create;
 begin
   inherited;
   FGVLibrary := 0;
+
+  Fgravity_class_int := nil;
+  Fgravity_class_float := nil;
+  Fgravity_class_bool := nil;
+  Fgravity_class_null := nil;
+
+  Fgravity_class_string := nil;
+  Fgravity_class_object := nil;
+  Fgravity_class_function := nil;
+  Fgravity_class_closure := nil;
+  Fgravity_class_fiber := nil;
+  Fgravity_class_class := nil;
+  Fgravity_class_instance := nil;
+  Fgravity_class_list := nil;
+  Fgravity_class_map := nil;
+  Fgravity_class_range := nil;
+  Fgravity_class_upvalue := nil;
+  Fgravity_class_system := nil;
 end;
 
 procedure TGVInterface.FreeGVLibrary;
@@ -2691,6 +2845,118 @@ begin
     exit;
   FreeLibrary(FGVLibrary);
   FGVLibrary := 0;
+end;
+
+function TGVInterface.GetClassBool: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_bool) then
+    Fgravity_class_bool := gravity_core_class_from_name(GRAVITY_CLASS_BOOL_NAME);
+  Result := Fgravity_class_bool;
+end;
+
+function TGVInterface.GetClassClass: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_class) then
+    Fgravity_class_class := gravity_core_class_from_name(GRAVITY_CLASS_CLASS_NAME);
+  Result := Fgravity_class_class;
+end;
+
+function TGVInterface.GetClassClosure: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_closure) then
+    Fgravity_class_closure := gravity_core_class_from_name(GRAVITY_CLASS_CLOSURE_NAME);
+  Result := Fgravity_class_closure;
+end;
+
+function TGVInterface.GetClassFiber: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_fiber) then
+    Fgravity_class_fiber := gravity_core_class_from_name(GRAVITY_CLASS_FIBER_NAME);
+  Result := Fgravity_class_fiber;
+end;
+
+function TGVInterface.GetClassFloat: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_float) then
+    Fgravity_class_float := gravity_core_class_from_name(GRAVITY_CLASS_FLOAT_NAME);
+  Result := Fgravity_class_float;
+end;
+
+function TGVInterface.GetClassFunction: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_function) then
+    Fgravity_class_function := gravity_core_class_from_name(GRAVITY_CLASS_FUNCTION_NAME);
+  Result := Fgravity_class_function;
+end;
+
+function TGVInterface.GetClassInstance: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_instance) then
+    Fgravity_class_instance := gravity_core_class_from_name(GRAVITY_CLASS_INSTANCE_NAME);
+  Result := Fgravity_class_instance;
+end;
+
+function TGVInterface.GetClassInt: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_int) then
+    Fgravity_class_int := gravity_core_class_from_name(GRAVITY_CLASS_int_NAME);
+  Result := Fgravity_class_int;
+end;
+
+function TGVInterface.GetClassList: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_list) then
+    Fgravity_class_list := gravity_core_class_from_name(GRAVITY_CLASS_LIST_NAME);
+  Result := Fgravity_class_list;
+end;
+
+function TGVInterface.GetClassMap: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_map) then
+    Fgravity_class_map := gravity_core_class_from_name(GRAVITY_CLASS_MAP_NAME);
+  Result := Fgravity_class_map;
+end;
+
+function TGVInterface.GetClassNull: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_null) then
+    Fgravity_class_null := gravity_core_class_from_name(GRAVITY_CLASS_NULL_NAME);
+  Result := Fgravity_class_null;
+end;
+
+function TGVInterface.GetClassObject: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_object) then
+    Fgravity_class_object := gravity_core_class_from_name(GRAVITY_CLASS_OBJECT_NAME);
+  Result := Fgravity_class_object;
+end;
+
+function TGVInterface.GetClassRange: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_range) then
+    Fgravity_class_range := gravity_core_class_from_name(GRAVITY_CLASS_RANGE_NAME);
+  Result := Fgravity_class_range;
+end;
+
+function TGVInterface.GetClassString: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_string) then
+    Fgravity_class_string := gravity_core_class_from_name(GRAVITY_CLASS_STRING_NAME);
+  Result := Fgravity_class_string;
+end;
+
+function TGVInterface.GetClassSystem: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_system) then
+    Fgravity_class_system := gravity_core_class_from_name(GRAVITY_CLASS_SYSTEM_NAME);
+  Result := Fgravity_class_system;
+end;
+
+function TGVInterface.GetClassUpvalue: Pgravity_class_t;
+begin
+  if not Assigned(Fgravity_class_upvalue) then
+    Fgravity_class_upvalue := gravity_core_class_from_name(GRAVITY_CLASS_UPVALUE_NAME);
+  Result := Fgravity_class_upvalue;
 end;
 
 function TGVInterface.LibraryName: String;
@@ -2737,6 +3003,14 @@ begin
   Fgravity_function_serialize := _gravity_function_serialize;
   Fgravity_function_setxdata := _gravity_function_setxdata;
   Fgravity_function_size := _gravity_function_size;
+
+  Fgravity_closure_blacken := _gravity_closure_blacken;
+  Fgravity_closure_dec_refcount := _gravity_closure_dec_refcount;
+  Fgravity_closure_inc_refcount := _gravity_closure_inc_refcount;
+  Fgravity_closure_free := _gravity_closure_free;
+  Fgravity_closure_size := _gravity_closure_size;
+  Fgravity_closure_new := _gravity_closure_new;
+
   Fgravity_upvalue_blacken := _gravity_upvalue_blacken;
   Fgravity_upvalue_free := _gravity_upvalue_free;
   Fgravity_upvalue_new := _gravity_upvalue_new;
@@ -2934,6 +3208,12 @@ begin
     Fgravity_function_serialize := GetProcAddr('gravity_function_serialize');
     Fgravity_function_setxdata := GetProcAddr('gravity_function_setxdata');
     Fgravity_function_size := GetProcAddr('gravity_function_size');
+    Fgravity_closure_blacken := GetProcAddr('gravity_closure_blacken');
+    Fgravity_closure_dec_refcount := GetProcAddr('gravity_closure_dec_refcount');
+    Fgravity_closure_inc_refcount := GetProcAddr('gravity_closure_inc_refcount');
+    Fgravity_closure_free := GetProcAddr('gravity_closure_free');
+    Fgravity_closure_size := GetProcAddr('gravity_closure_size');
+    Fgravity_closure_new := GetProcAddr('gravity_closure_new');
     Fgravity_upvalue_blacken := GetProcAddr('gravity_upvalue_blacken');
     Fgravity_upvalue_free := GetProcAddr('gravity_upvalue_free');
     Fgravity_upvalue_new := GetProcAddr('gravity_upvalue_new');
@@ -3110,6 +3390,17 @@ begin
 {$ENDIF GRAVITY_STATIC_LINK}
 end;
 
+function TGVInterface.NEW_CLOSURE_VALUE(fptr: gravity_c_internal): gravity_value_t;
+begin
+  Result.isa := gravity_class_closure;
+  Result.f2.p := Pgravity_object_t(gravity_closure_new(nil, NEW_FUNCTION(fptr)));
+end;
+
+function TGVInterface.NEW_FUNCTION(fptr: gravity_c_internal): Pgravity_function_t;
+begin
+  Result := Fgravity_function_new_internal(nil, nil, fptr, 0);
+end;
+
 function TGVInterface.TryLoadLibrary: Boolean;
 begin
 {$IFDEF GRAVITY_STATIC_LINK}
@@ -3245,6 +3536,106 @@ end;
 function TGVInterface.VALUE_FROM_UNDEFINED: gravity_value_t;
 begin
   result := gravity_value_from_undefined;
+end;
+
+function TGVInterface.VALUE_ISA_BASIC_TYPE(v: gravity_value_t): boolean;
+begin
+  Result := VALUE_ISA_STRING(v) or VALUE_ISA_INT(v) or VALUE_ISA_FLOAT(v) or VALUE_ISA_BOOL(v);
+end;
+
+function TGVInterface.VALUE_ISA_BOOL(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_bool;
+end;
+
+function TGVInterface.VALUE_ISA_CALLABLE(v: gravity_value_t): boolean;
+begin
+  Result := VALUE_ISA_FUNCTION(v) or VALUE_ISA_CLASS(v) or VALUE_ISA_FIBER(v);
+end;
+
+function TGVInterface.VALUE_ISA_CLASS(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_class;
+end;
+
+function TGVInterface.VALUE_ISA_CLOSURE(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_closure;
+end;
+
+function TGVInterface.VALUE_ISA_ERROR(v: gravity_value_t): boolean;
+begin
+  Result := VALUE_ISA_NOTVALID(v);
+end;
+
+function TGVInterface.VALUE_ISA_FIBER(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_fiber;
+end;
+
+function TGVInterface.VALUE_ISA_FLOAT(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_fiber;
+end;
+
+function TGVInterface.VALUE_ISA_FUNCTION(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_function;
+end;
+
+function TGVInterface.VALUE_ISA_INSTANCE(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_instance;
+end;
+
+function TGVInterface.VALUE_ISA_INT(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_int;
+end;
+
+function TGVInterface.VALUE_ISA_LIST(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_list;
+end;
+
+function TGVInterface.VALUE_ISA_MAP(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_map;
+end;
+
+function TGVInterface.VALUE_ISA_NOTVALID(v: gravity_value_t): boolean;
+begin
+  Result := (not Assigned(v.isa)) or (v.isa = nil);
+end;
+
+function TGVInterface.VALUE_ISA_NULL(v: gravity_value_t): boolean;
+begin
+  Result := (v.isa = gravity_class_null) and (v.f2.n = 0);
+end;
+
+function TGVInterface.VALUE_ISA_NULLCLASS(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_null;
+end;
+
+function TGVInterface.VALUE_ISA_RANGE(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_range;
+end;
+
+function TGVInterface.VALUE_ISA_STRING(v: gravity_value_t): boolean;
+begin
+  Result := v.isa = gravity_class_string;
+end;
+
+function TGVInterface.VALUE_ISA_UNDEFINED(v: gravity_value_t): boolean;
+begin
+  Result := (v.isa = gravity_class_null) and (v.f2.n = 1);
+end;
+
+function TGVInterface.VALUE_ISA_VALID(v: gravity_value_t): boolean;
+begin
+  Result := Assigned(v.isa) and (v.isa <> nil);
 end;
 
 function TGVInterface.VALUE_NOT_VALID: gravity_value_t;
@@ -3510,6 +3901,36 @@ function TGVInterface.gravity_class_size(vm: Pgravity_vm;
   c: Pgravity_class_t): UInt32;
 begin
   result := Fgravity_class_size(vm, c);
+end;
+
+procedure TGVInterface.gravity_closure_blacken(vm: Pgravity_vm; closure: Pgravity_closure_t);
+begin
+  Fgravity_closure_blacken(vm, closure);
+end;
+
+procedure TGVInterface.gravity_closure_dec_refcount(vm: Pgravity_vm; closure: Pgravity_closure_t);
+begin
+  Fgravity_closure_dec_refcount(vm, closure);
+end;
+
+procedure TGVInterface.gravity_closure_inc_refcount(vm: Pgravity_vm; closure: Pgravity_closure_t);
+begin
+  Fgravity_closure_inc_refcount(vm, closure);
+end;
+
+procedure TGVInterface.gravity_closure_free(vm: Pgravity_vm; closure: Pgravity_closure_t);
+begin
+  Fgravity_closure_free(vm, closure);
+end;
+
+function TGVInterface.gravity_closure_size(vm: Pgravity_vm; closure: Pgravity_closure_t): UInt32;
+begin
+  Result := Fgravity_closure_size(vm, closure);
+end;
+
+function TGVInterface.gravity_closure_new(vm: Pgravity_vm; f: Pgravity_function_t): Pgravity_closure_t;
+begin
+  Result := Fgravity_closure_new(vm, f);
 end;
 
 procedure TGVInterface.gravity_fiber_blacken(vm: Pgravity_vm;
