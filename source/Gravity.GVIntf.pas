@@ -641,6 +641,9 @@ type
     f2: _anonymous_type_8;
   end;
 
+  gravity_value_t_array = array of gravity_value_t;
+  Pgravity_value_t_array = ^gravity_value_t_array;
+
   gravity_value_r = record
     n: NativeUInt;
     m: NativeUInt;
@@ -1962,6 +1965,8 @@ type
     function GetClassString: Pgravity_class_t;
     function GetClassSystem: Pgravity_class_t;
     function GetClassUpvalue: Pgravity_class_t;
+
+    procedure ResetClassReferences;
   public
     class function DefaultInstance: IGVInterface;
 
@@ -2853,24 +2858,7 @@ constructor TGVInterface.Create;
 begin
   inherited;
   FGVLibrary := 0;
-
-  Fgravity_class_int := nil;
-  Fgravity_class_float := nil;
-  Fgravity_class_bool := nil;
-  Fgravity_class_null := nil;
-
-  Fgravity_class_string := nil;
-  Fgravity_class_object := nil;
-  Fgravity_class_function := nil;
-  Fgravity_class_closure := nil;
-  Fgravity_class_fiber := nil;
-  Fgravity_class_class := nil;
-  Fgravity_class_instance := nil;
-  Fgravity_class_list := nil;
-  Fgravity_class_map := nil;
-  Fgravity_class_range := nil;
-  Fgravity_class_upvalue := nil;
-  Fgravity_class_system := nil;
+  ResetClassReferences;
 end;
 
 procedure TGVInterface.FreeGVLibrary;
@@ -3453,6 +3441,27 @@ function TGVInterface.NEW_FUNCTION(fptr: gravity_c_internal)
   : Pgravity_function_t;
 begin
   result := Fgravity_function_new_internal(nil, nil, fptr, 0);
+end;
+
+procedure TGVInterface.ResetClassReferences;
+begin
+  Fgravity_class_int := nil;
+  Fgravity_class_float := nil;
+  Fgravity_class_bool := nil;
+  Fgravity_class_null := nil;
+
+  Fgravity_class_string := nil;
+  Fgravity_class_object := nil;
+  Fgravity_class_function := nil;
+  Fgravity_class_closure := nil;
+  Fgravity_class_fiber := nil;
+  Fgravity_class_class := nil;
+  Fgravity_class_instance := nil;
+  Fgravity_class_list := nil;
+  Fgravity_class_map := nil;
+  Fgravity_class_range := nil;
+  Fgravity_class_upvalue := nil;
+  Fgravity_class_system := nil;
 end;
 
 function TGVInterface.TryLoadLibrary: Boolean;
@@ -4630,6 +4639,7 @@ end;
 procedure TGVInterface.gravity_core_free();
 begin
   Fgravity_core_free();
+  ResetClassReferences;
 end;
 
 function TGVInterface.gravity_core_identifiers(): PPAnsiChar;
