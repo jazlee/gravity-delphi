@@ -133,7 +133,6 @@ const
 
 type
   // Forward declarations
-  PAnsiChar = ^AnsiChar;
   PPAnsiChar = ^PAnsiChar;
   PUInt32 = ^UInt32;
   PUInt16 = ^UInt16;
@@ -956,6 +955,7 @@ type
     loadfile_callback: gravity_loadfile_callback;
     filename_callback: gravity_filename_callback;
     optional_classes: gravity_optclass_callback;
+
     bridge_initinstance: gravity_bridge_initinstance;
     bridge_setvalue: gravity_bridge_setvalue;
     bridge_getvalue: gravity_bridge_getvalue;
@@ -1682,20 +1682,22 @@ type
     function VALUE_FROM_FALSE: gravity_value_t;
     function VALUE_FROM_TRUE: gravity_value_t;
 
-    function VALUE_AS_OBJECT(val: Pgravity_value_t): Pgravity_object_t;
-    function VALUE_AS_STRING(val: Pgravity_value_t): Pgravity_string_t;
-    function VALUE_AS_FIBER(val: Pgravity_value_t): Pgravity_fiber_t;
-    function VALUE_AS_FUNCTION(val: Pgravity_value_t): Pgravity_function_t;
-    function VALUE_AS_CLOSURE(val: Pgravity_value_t): Pgravity_closure_t;
-    function VALUE_AS_CLASS(val: Pgravity_value_t): Pgravity_class_t;
-    function VALUE_AS_INSTANCE(val: Pgravity_value_t): Pgravity_instance_t;
-    function VALUE_AS_LIST(val: Pgravity_value_t): Pgravity_list_t;
-    function VALUE_AS_MAP(val: Pgravity_value_t): Pgravity_map_t;
-    function VALUE_AS_RANGE(val: Pgravity_value_t): Pgravity_range_t;
-    function VALUE_AS_ERROR(val: Pgravity_value_t): PAnsiChar;
-    function VALUE_AS_FLOAT(val: Pgravity_value_t): gravity_float_t;
-    function VALUE_AS_INT(val: Pgravity_value_t): gravity_int_t;
-    function VALUE_AS_BOOL(val: Pgravity_value_t): gravity_int_t;
+    function VALUE_AS_OBJECT(val: gravity_value_t): Pgravity_object_t;
+    function VALUE_AS_STRING(val: gravity_value_t): Pgravity_string_t;
+    function VALUE_AS_FIBER(val: gravity_value_t): Pgravity_fiber_t;
+    function VALUE_AS_FUNCTION(val: gravity_value_t): Pgravity_function_t;
+    function VALUE_AS_CLOSURE(val: gravity_value_t): Pgravity_closure_t;
+    function VALUE_AS_CLASS(val: gravity_value_t): Pgravity_class_t;
+    function VALUE_AS_INSTANCE(val: gravity_value_t): Pgravity_instance_t;
+    function VALUE_AS_LIST(val: gravity_value_t): Pgravity_list_t;
+    function VALUE_AS_MAP(val: gravity_value_t): Pgravity_map_t;
+    function VALUE_AS_RANGE(val: gravity_value_t): Pgravity_range_t;
+    function VALUE_AS_ERROR(val: gravity_value_t): PAnsiChar;
+    function VALUE_AS_FLOAT(val: gravity_value_t): gravity_float_t;
+    function VALUE_AS_INT(val: gravity_value_t): gravity_int_t;
+    function VALUE_AS_BOOL(val: gravity_value_t): gravity_int_t;
+    function VALUE_AS_CSTRING(val: gravity_value_t): PAnsiChar;
+
 
     function VALUE_ISA_FUNCTION(v: gravity_value_t): Boolean;
     function VALUE_ISA_INSTANCE(v: gravity_value_t): Boolean;
@@ -1718,8 +1720,35 @@ type
     function VALUE_ISA_NOTVALID(v: gravity_value_t): Boolean;
     function VALUE_ISA_ERROR(v: gravity_value_t): Boolean;
 
+    function OBJECT_ISA_FUNCTION(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_INSTANCE(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_CLOSURE(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_FIBER(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_CLASS(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_STRING(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_INT(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_FLOAT(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_BOOL(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_LIST(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_MAP(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_RANGE(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_NULL(v: Pgravity_object_t): Boolean;
+    function OBJECT_IS_VALID(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_UPVALUE(v: Pgravity_object_t): Boolean;
+
+    function NEW_FUNCTION_BRIDGED(identifier: AnsiString; xdata: pointer): Pgravity_function_t;
+    function NEW_CLOSURE_VALUE_BRIDGED(identifier: AnsiString; xdata: pointer): gravity_value_t;
+
     function NEW_FUNCTION(fptr: gravity_c_internal): Pgravity_function_t;
     function NEW_CLOSURE_VALUE(fptr: gravity_c_internal): gravity_value_t;
+
+    function GET_VALUE(args: Pgravity_value_t; ndx: UInt16): gravity_value_t;
+    procedure SETMETA_INITED(c: Pgravity_class_t);
+
+    function RETURN_VALUE(vm: Pgravity_vm; v: gravity_value_t; index: UInt32): Boolean;
+    function RETURN_CLOSURE(vm: Pgravity_vm; v: gravity_value_t; index: UInt32): Boolean;
+    function RETURN_FIBER: Boolean;
+    function RETURN_NOVALUE: Boolean;
   end;
 
   TRegisterGVInterface = function: IGVInterface;
@@ -2308,20 +2337,21 @@ type
     function VALUE_FROM_FALSE: gravity_value_t;
     function VALUE_FROM_TRUE: gravity_value_t;
 
-    function VALUE_AS_OBJECT(val: Pgravity_value_t): Pgravity_object_t;
-    function VALUE_AS_STRING(val: Pgravity_value_t): Pgravity_string_t;
-    function VALUE_AS_FIBER(val: Pgravity_value_t): Pgravity_fiber_t;
-    function VALUE_AS_FUNCTION(val: Pgravity_value_t): Pgravity_function_t;
-    function VALUE_AS_CLOSURE(val: Pgravity_value_t): Pgravity_closure_t;
-    function VALUE_AS_CLASS(val: Pgravity_value_t): Pgravity_class_t;
-    function VALUE_AS_INSTANCE(val: Pgravity_value_t): Pgravity_instance_t;
-    function VALUE_AS_LIST(val: Pgravity_value_t): Pgravity_list_t;
-    function VALUE_AS_MAP(val: Pgravity_value_t): Pgravity_map_t;
-    function VALUE_AS_RANGE(val: Pgravity_value_t): Pgravity_range_t;
-    function VALUE_AS_ERROR(val: Pgravity_value_t): PAnsiChar;
-    function VALUE_AS_FLOAT(val: Pgravity_value_t): gravity_float_t;
-    function VALUE_AS_INT(val: Pgravity_value_t): gravity_int_t;
-    function VALUE_AS_BOOL(val: Pgravity_value_t): gravity_int_t;
+    function VALUE_AS_OBJECT(val: gravity_value_t): Pgravity_object_t;
+    function VALUE_AS_STRING(val: gravity_value_t): Pgravity_string_t;
+    function VALUE_AS_FIBER(val: gravity_value_t): Pgravity_fiber_t;
+    function VALUE_AS_FUNCTION(val: gravity_value_t): Pgravity_function_t;
+    function VALUE_AS_CLOSURE(val: gravity_value_t): Pgravity_closure_t;
+    function VALUE_AS_CLASS(val: gravity_value_t): Pgravity_class_t;
+    function VALUE_AS_INSTANCE(val: gravity_value_t): Pgravity_instance_t;
+    function VALUE_AS_LIST(val: gravity_value_t): Pgravity_list_t;
+    function VALUE_AS_MAP(val: gravity_value_t): Pgravity_map_t;
+    function VALUE_AS_RANGE(val: gravity_value_t): Pgravity_range_t;
+    function VALUE_AS_ERROR(val: gravity_value_t): PAnsiChar;
+    function VALUE_AS_FLOAT(val: gravity_value_t): gravity_float_t;
+    function VALUE_AS_INT(val: gravity_value_t): gravity_int_t;
+    function VALUE_AS_BOOL(val: gravity_value_t): gravity_int_t;
+    function VALUE_AS_CSTRING(val: gravity_value_t): PAnsiChar;
 
     function VALUE_ISA_FUNCTION(v: gravity_value_t): Boolean;
     function VALUE_ISA_INSTANCE(v: gravity_value_t): Boolean;
@@ -2344,8 +2374,32 @@ type
     function VALUE_ISA_NOTVALID(v: gravity_value_t): Boolean;
     function VALUE_ISA_ERROR(v: gravity_value_t): Boolean;
 
+    function OBJECT_ISA_FUNCTION(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_INSTANCE(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_CLOSURE(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_FIBER(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_CLASS(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_STRING(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_INT(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_FLOAT(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_BOOL(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_LIST(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_MAP(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_RANGE(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_NULL(v: Pgravity_object_t): Boolean;
+    function OBJECT_IS_VALID(v: Pgravity_object_t): Boolean;
+    function OBJECT_ISA_UPVALUE(v: Pgravity_object_t): Boolean;
+
     function NEW_FUNCTION(fptr: gravity_c_internal): Pgravity_function_t;
+    function NEW_FUNCTION_BRIDGED(identifier: AnsiString; xdata: pointer): Pgravity_function_t;
     function NEW_CLOSURE_VALUE(fptr: gravity_c_internal): gravity_value_t;
+    function NEW_CLOSURE_VALUE_BRIDGED(identifier: AnsiString; xdata: pointer): gravity_value_t;
+    function GET_VALUE(args: Pgravity_value_t; ndx: UInt16): gravity_value_t;
+    procedure SETMETA_INITED(c: Pgravity_class_t);
+    function RETURN_VALUE(vm: Pgravity_vm; v: gravity_value_t; index: UInt32): Boolean;
+    function RETURN_CLOSURE(vm: Pgravity_vm; v: gravity_value_t; index: UInt32): Boolean;
+    function RETURN_FIBER: Boolean;
+    function RETURN_NOVALUE: Boolean;
 
     property gravity_class_int: Pgravity_class_t read GetClassInt;
     property gravity_class_float: Pgravity_class_t read GetClassFloat;
@@ -2995,6 +3049,12 @@ begin
   result := Fgravity_class_upvalue;
 end;
 
+function TGVInterface.GET_VALUE(args: Pgravity_value_t;
+  ndx: UInt16): gravity_value_t;
+begin
+  Result := Pgravity_value_t(NativeUInt(args) + ndx * SizeOf(gravity_value_t))^;
+end;
+
 function TGVInterface.LibraryName: String;
 begin
   result := LIBNAME_DLL;
@@ -3429,6 +3489,14 @@ begin
 {$ENDIF GRAVITY_STATIC_LINK}
 end;
 
+function TGVInterface.NEW_CLOSURE_VALUE_BRIDGED(identifier: AnsiString;
+  xdata: pointer): gravity_value_t;
+begin
+  result.isa := gravity_class_closure;
+  result.f2.p := Pgravity_object_t(gravity_closure_new(nil,
+    NEW_FUNCTION_BRIDGED(identifier, xdata)));
+end;
+
 function TGVInterface.NEW_CLOSURE_VALUE(fptr: gravity_c_internal)
   : gravity_value_t;
 begin
@@ -3441,6 +3509,87 @@ function TGVInterface.NEW_FUNCTION(fptr: gravity_c_internal)
   : Pgravity_function_t;
 begin
   result := Fgravity_function_new_internal(nil, nil, fptr, 0);
+end;
+
+function TGVInterface.NEW_FUNCTION_BRIDGED(identifier: AnsiString;
+  xdata: pointer): Pgravity_function_t;
+begin
+  Result := Fgravity_function_new_bridged(nil, PAnsiChar(identifier), xdata);
+end;
+
+function TGVInterface.OBJECT_ISA_BOOL(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_bool;
+end;
+
+function TGVInterface.OBJECT_ISA_CLASS(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_class;
+end;
+
+function TGVInterface.OBJECT_ISA_CLOSURE(v: Pgravity_object_t): Boolean;
+begin
+
+end;
+
+function TGVInterface.OBJECT_ISA_FIBER(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_closure;
+end;
+
+function TGVInterface.OBJECT_ISA_FLOAT(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_float;
+end;
+
+function TGVInterface.OBJECT_ISA_FUNCTION(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_function;
+end;
+
+function TGVInterface.OBJECT_ISA_INSTANCE(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_instance;
+end;
+
+function TGVInterface.OBJECT_ISA_INT(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_int;
+end;
+
+function TGVInterface.OBJECT_ISA_LIST(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_list;
+end;
+
+function TGVInterface.OBJECT_ISA_MAP(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_map;
+end;
+
+function TGVInterface.OBJECT_ISA_NULL(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_null;
+end;
+
+function TGVInterface.OBJECT_ISA_RANGE(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_range;
+end;
+
+function TGVInterface.OBJECT_ISA_STRING(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_string;
+end;
+
+function TGVInterface.OBJECT_ISA_UPVALUE(v: Pgravity_object_t): Boolean;
+begin
+  Result := v^.isa = gravity_class_upvalue;
+end;
+
+function TGVInterface.OBJECT_IS_VALID(v: Pgravity_object_t): Boolean;
+begin
+  Result := Assigned(v^.isa);
 end;
 
 procedure TGVInterface.ResetClassReferences;
@@ -3464,6 +3613,36 @@ begin
   Fgravity_class_system := nil;
 end;
 
+function TGVInterface.RETURN_CLOSURE(vm: Pgravity_vm; v: gravity_value_t;
+  index: UInt32): Boolean;
+begin
+  gravity_vm_setslot(vm, v, index);
+  Result := False;
+end;
+
+function TGVInterface.RETURN_FIBER: Boolean;
+begin
+  Result := False;
+end;
+
+function TGVInterface.RETURN_NOVALUE: Boolean;
+begin
+  Result := True;
+end;
+
+function TGVInterface.RETURN_VALUE(vm: Pgravity_vm; v: gravity_value_t;
+  index: UInt32): Boolean;
+begin
+  gravity_vm_setslot(vm, v, index);
+  Result := True;
+end;
+
+procedure TGVInterface.SETMETA_INITED(c: Pgravity_class_t);
+begin
+  if Assigned(c) then
+    c^.is_inited := True;
+end;
+
 function TGVInterface.TryLoadLibrary: Boolean;
 begin
 {$IFDEF GRAVITY_STATIC_LINK}
@@ -3477,75 +3656,80 @@ begin
 {$ENDIF GRAVITY_STATIC_LINK}
 end;
 
-function TGVInterface.VALUE_AS_BOOL(val: Pgravity_value_t): gravity_int_t;
+function TGVInterface.VALUE_AS_BOOL(val: gravity_value_t): gravity_int_t;
 begin
-  result := val^.f2.n;
+  result := val.f2.n;
 end;
 
-function TGVInterface.VALUE_AS_CLASS(val: Pgravity_value_t): Pgravity_class_t;
+function TGVInterface.VALUE_AS_CLASS(val: gravity_value_t): Pgravity_class_t;
 begin
   result := Pgravity_class_t(VALUE_AS_OBJECT(val));
 end;
 
-function TGVInterface.VALUE_AS_CLOSURE(val: Pgravity_value_t)
+function TGVInterface.VALUE_AS_CLOSURE(val: gravity_value_t)
   : Pgravity_closure_t;
 begin
   result := Pgravity_closure_t(VALUE_AS_OBJECT(val));
 end;
 
-function TGVInterface.VALUE_AS_ERROR(val: Pgravity_value_t): PAnsiChar;
+function TGVInterface.VALUE_AS_CSTRING(val: gravity_value_t): PAnsiChar;
 begin
-  result := PAnsiChar(val^.f2.p);
+  result := VALUE_AS_STRING(val)^.s;
 end;
 
-function TGVInterface.VALUE_AS_FIBER(val: Pgravity_value_t): Pgravity_fiber_t;
+function TGVInterface.VALUE_AS_ERROR(val: gravity_value_t): PAnsiChar;
+begin
+  result := PAnsiChar(val.f2.p);
+end;
+
+function TGVInterface.VALUE_AS_FIBER(val: gravity_value_t): Pgravity_fiber_t;
 begin
   result := Pgravity_fiber_t(VALUE_AS_OBJECT(val));
 end;
 
-function TGVInterface.VALUE_AS_FLOAT(val: Pgravity_value_t): gravity_float_t;
+function TGVInterface.VALUE_AS_FLOAT(val: gravity_value_t): gravity_float_t;
 begin
-  result := val^.f2.f;
+  result := val.f2.f;
 end;
 
-function TGVInterface.VALUE_AS_FUNCTION(val: Pgravity_value_t)
+function TGVInterface.VALUE_AS_FUNCTION(val: gravity_value_t)
   : Pgravity_function_t;
 begin
   result := Pgravity_function_t(VALUE_AS_OBJECT(val));
 end;
 
-function TGVInterface.VALUE_AS_INSTANCE(val: Pgravity_value_t)
+function TGVInterface.VALUE_AS_INSTANCE(val: gravity_value_t)
   : Pgravity_instance_t;
 begin
   result := Pgravity_instance_t(VALUE_AS_OBJECT(val));
 end;
 
-function TGVInterface.VALUE_AS_INT(val: Pgravity_value_t): gravity_int_t;
+function TGVInterface.VALUE_AS_INT(val: gravity_value_t): gravity_int_t;
 begin
-  result := val^.f2.n;
+  result := val.f2.n;
 end;
 
-function TGVInterface.VALUE_AS_LIST(val: Pgravity_value_t): Pgravity_list_t;
+function TGVInterface.VALUE_AS_LIST(val: gravity_value_t): Pgravity_list_t;
 begin
   result := Pgravity_list_t(VALUE_AS_OBJECT(val));
 end;
 
-function TGVInterface.VALUE_AS_MAP(val: Pgravity_value_t): Pgravity_map_t;
+function TGVInterface.VALUE_AS_MAP(val: gravity_value_t): Pgravity_map_t;
 begin
   result := Pgravity_map_t(VALUE_AS_OBJECT(val));
 end;
 
-function TGVInterface.VALUE_AS_OBJECT(val: Pgravity_value_t): Pgravity_object_t;
+function TGVInterface.VALUE_AS_OBJECT(val: gravity_value_t): Pgravity_object_t;
 begin
-  result := val^.f2.p;
+  result := val.f2.p;
 end;
 
-function TGVInterface.VALUE_AS_RANGE(val: Pgravity_value_t): Pgravity_range_t;
+function TGVInterface.VALUE_AS_RANGE(val: gravity_value_t): Pgravity_range_t;
 begin
   result := Pgravity_range_t(VALUE_AS_OBJECT(val));
 end;
 
-function TGVInterface.VALUE_AS_STRING(val: Pgravity_value_t): Pgravity_string_t;
+function TGVInterface.VALUE_AS_STRING(val: gravity_value_t): Pgravity_string_t;
 begin
   result := Pgravity_string_t(VALUE_AS_OBJECT(val));
 end;
@@ -3791,8 +3975,12 @@ function TGVInterface.gravity_function_new_internal(vm: Pgravity_vm;
   const identifier: AnsiString; exec: gravity_c_internal; nparams: UInt16)
   : Pgravity_function_t;
 begin
-  result := Fgravity_function_new_internal(vm, PAnsiChar(identifier),
-    exec, nparams);
+  if identifier = '' then
+    result := Fgravity_function_new_internal(vm, nil,
+      exec, nparams)
+  else
+    result := Fgravity_function_new_internal(vm, PAnsiChar(identifier),
+      exec, nparams);
 end;
 
 function TGVInterface.gravity_function_new_special(vm: Pgravity_vm;
