@@ -1737,7 +1737,10 @@ type
     function OBJECT_ISA_UPVALUE(v: Pgravity_object_t): Boolean;
 
     function NEW_FUNCTION_BRIDGED(identifier: AnsiString; xdata: pointer): Pgravity_function_t;
+    function NEW_FUNCTION_SPECIAL(identifier: AnsiString; index: UInt16; getter, setter: pointer): Pgravity_function_t;
     function NEW_CLOSURE_VALUE_BRIDGED(identifier: AnsiString; xdata: pointer): gravity_value_t;
+    function NEW_CLOSURE_VALUE_SPECIAL(identifier: AnsiString;
+      index: Uint16; getter, setter: pointer): gravity_value_t;
 
     function NEW_FUNCTION(fptr: gravity_c_internal): Pgravity_function_t;
     function NEW_CLOSURE_VALUE(fptr: gravity_c_internal): gravity_value_t;
@@ -2392,8 +2395,12 @@ type
 
     function NEW_FUNCTION(fptr: gravity_c_internal): Pgravity_function_t;
     function NEW_FUNCTION_BRIDGED(identifier: AnsiString; xdata: pointer): Pgravity_function_t;
+    function NEW_FUNCTION_SPECIAL(identifier: AnsiString; index: UInt16; getter, setter: pointer): Pgravity_function_t;
+
     function NEW_CLOSURE_VALUE(fptr: gravity_c_internal): gravity_value_t;
     function NEW_CLOSURE_VALUE_BRIDGED(identifier: AnsiString; xdata: pointer): gravity_value_t;
+    function NEW_CLOSURE_VALUE_SPECIAL(identifier: AnsiString;
+      index: Uint16; getter, setter: pointer): gravity_value_t;
     function GET_VALUE(args: Pgravity_value_t; ndx: UInt16): gravity_value_t;
     procedure SETMETA_INITED(c: Pgravity_class_t);
     function RETURN_VALUE(vm: Pgravity_vm; v: gravity_value_t; index: UInt32): Boolean;
@@ -3497,6 +3504,14 @@ begin
     NEW_FUNCTION_BRIDGED(identifier, xdata)));
 end;
 
+function TGVInterface.NEW_CLOSURE_VALUE_SPECIAL(identifier: AnsiString;
+  index: Uint16; getter, setter: pointer): gravity_value_t;
+begin
+  result.isa := gravity_class_closure;
+  result.f2.p := Pgravity_object_t(gravity_closure_new(nil,
+    NEW_FUNCTION_SPECIAL(identifier, index, getter, setter)));
+end;
+
 function TGVInterface.NEW_CLOSURE_VALUE(fptr: gravity_c_internal)
   : gravity_value_t;
 begin
@@ -3515,6 +3530,12 @@ function TGVInterface.NEW_FUNCTION_BRIDGED(identifier: AnsiString;
   xdata: pointer): Pgravity_function_t;
 begin
   Result := Fgravity_function_new_bridged(nil, PAnsiChar(identifier), xdata);
+end;
+
+function TGVInterface.NEW_FUNCTION_SPECIAL(identifier: AnsiString;
+  index: UInt16; getter, setter: pointer): Pgravity_function_t;
+begin
+  Result := Fgravity_function_new_special(nil, PAnsiChar(identifier), index, getter, setter);
 end;
 
 function TGVInterface.OBJECT_ISA_BOOL(v: Pgravity_object_t): Boolean;

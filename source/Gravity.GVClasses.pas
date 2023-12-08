@@ -1,6 +1,7 @@
 unit Gravity.GVClasses;
 
 interface
+
 uses
   System.SysUtils, System.Classes, Winapi.Windows, Gravity.GVIntf;
 
@@ -14,11 +15,14 @@ type
     constructor Create;
     destructor Destroy; override;
   end;
+
   TGravityWrapperBaseClass = class of TGravityWrapperBase;
 
+function GravityCall(AVm: Pgravity_vm; AFunc, ASender: gravity_value_t;
+  Args: array of const): Variant;
 
-procedure BindNativeClass(AVM: Pgravity_vm);
-procedure UnbindNativeClass(AVM: Pgravity_vm);
+procedure BindNativeClass(AVm: Pgravity_vm);
+procedure UnbindNativeClass(AVm: Pgravity_vm);
 procedure RegisterGravityClass(AClass: TGravityWrapperBaseClass);
 procedure RegisterGravityClasses(AClasses: array of TGravityWrapperBaseClass);
 procedure RegisterGravityName(const AVarName: string);
@@ -27,11 +31,14 @@ procedure UnRegisterGravityClasses(AClasses: array of TGravityWrapperBaseClass);
 function FindNativeClass(const ClassName: string): TGravityWrapperBaseClass;
 function GetNativeClass(const AClassName: string): TGravityWrapperBaseClass;
 function GetGravityClass(const AClassName: string): Pgravity_class_t;
-procedure DefineNativeObject(AVM: Pgravity_vm; const AVarName: String; AObj: TGravityWrapperBase);
+procedure DefineNativeObject(AVm: Pgravity_vm; const AVarName: String;
+  AObj: TGravityWrapperBase);
 
-procedure delphi_bridge_hash_iterate(hashtable: Pgravity_hash_t; key, value: gravity_value_t; data: pointer); cdecl;
+procedure delphi_bridge_hash_iterate(hashtable: Pgravity_hash_t;
+  key, value: gravity_value_t; data: pointer); cdecl;
 
 implementation
+
 uses
   System.Generics.Defaults,
   System.Generics.Collections,
@@ -44,7 +51,6 @@ type
   TAnsiStringItemList = array of AnsiString;
   TAnsiCharItemList = array of PAnsiChar;
 
-
   TAnsiStrings = class(TPersistent)
   private
     FList: TAnsiStringItemList;
@@ -55,7 +61,7 @@ type
     function GetCount: Integer;
     procedure Grow;
   protected
-    procedure Error(Msg: PResStringRec; Data: Integer);
+    procedure Error(Msg: PResStringRec; data: Integer);
     procedure SetCapacity(NewCapacity: Integer);
 
     function CompareStrings(const S1, S2: AnsiString): Integer; virtual;
@@ -99,34 +105,39 @@ type
   public
     constructor Create;
 
-    function IndexOf(Item: Pointer): Integer;
+    function IndexOf(Item: pointer): Integer;
     function CollectionNames: TArray<String>;
   end;
 
+  TGravityFuncType = (ftMethod = 0, ftPropGetter, ftPropSetter,
+    ftFieldGetter, ftFieldSetter);
   PNativeFunctionRecord = ^TNativeFunctionRecord;
   TNativeFunctionRecord = record
+    FuncType: TGravityFuncType;
     FuncName: PAnsiChar;
-    NArgs: integer;
+    NArgs: Integer;
     ClassItem: TGravityClassItem;
   end;
 
-function delphi_bridge_initinstance(vm: Pgravity_vm; xdata: Pointer;
-  ctx: gravity_value_t; instance: Pgravity_instance_t; args: Pgravity_value_t;
-  nargs: Int16): Boolean; cdecl;
+function delphi_bridge_initinstance(vm: Pgravity_vm; xdata: pointer;
+  ctx: gravity_value_t; instance: Pgravity_instance_t; Args: Pgravity_value_t;
+  NArgs: Int16): Boolean; cdecl;
 begin
   with GravityEng do
   begin
   end;
 end;
 
-procedure delphi_bridge_free_instance(vm: Pgravity_vm; instance: Pgravity_instance_t); cdecl;
+procedure delphi_bridge_free_instance(vm: Pgravity_vm;
+  instance: Pgravity_instance_t); cdecl;
 begin
   with GravityEng do
   begin
   end;
 end;
 
-procedure delphi_bridge_free_closure(vm: Pgravity_vm; closure: Pgravity_closure_t); cdecl;
+procedure delphi_bridge_free_closure(vm: Pgravity_vm;
+  closure: Pgravity_closure_t); cdecl;
 var
   AFunc: PNativeFunctionRecord;
 begin
@@ -135,32 +146,33 @@ begin
     if closure^.f^.tag = EXEC_TYPE_SPECIAL then
     begin
 
-    end else
-    if closure^.f^.tag = EXEC_TYPE_BRIDGED then
+    end
+    else if closure^.f^.tag = EXEC_TYPE_BRIDGED then
     begin
 
     end;
     if closure^.f^.xdata <> nil then
     begin
       AFunc := PNativeFunctionRecord(closure^.f^.xdata);
-      FreeMem(AFunc^.FuncName, Length(AFunc^.FuncName)+1);
+      FreeMem(AFunc^.FuncName, Length(AFunc^.FuncName) + 1);
       FreeMem(AFunc, SizeOf(TNativeFunctionRecord));
       closure^.f^.xdata := nil;
     end;
   end;
 end;
 
-procedure delphi_bridge_free_class(vm: Pgravity_vm; klass: Pgravity_class_t); cdecl;
+procedure delphi_bridge_free_class(vm: Pgravity_vm;
+  klass: Pgravity_class_t); cdecl;
 var
   AMeta: Pgravity_class_t;
 begin
   if Assigned(klass^.xdata) then
-  with GravityEng do
-  begin
-    AMeta := gravity_class_get_meta(klass);
-    gravity_hash_iterate(AMeta^.htable, delphi_bridge_hash_iterate, vm);
-    gravity_hash_iterate(klass^.htable, delphi_bridge_hash_iterate, vm);
-  end;
+    with GravityEng do
+    begin
+      AMeta := gravity_class_get_meta(klass);
+      gravity_hash_iterate(AMeta^.htable, delphi_bridge_hash_iterate, vm);
+      gravity_hash_iterate(klass^.htable, delphi_bridge_hash_iterate, vm);
+    end;
 end;
 
 procedure delphi_bridge_free(vm: Pgravity_vm; obj: Pgravity_object_t); cdecl;
@@ -176,8 +188,8 @@ begin
   end;
 end;
 
-function delphi_bridge_execute(vm: Pgravity_vm; xdata: Pointer;
-  ctx: gravity_value_t; args: Pgravity_value_t; nargs: Int16; vindex: UInt32)
+function delphi_bridge_execute(vm: Pgravity_vm; xdata: pointer;
+  ctx: gravity_value_t; Args: Pgravity_value_t; NArgs: Int16; vindex: UInt32)
   : Boolean; cdecl;
 var
   AFuncRec: PNativeFunctionRecord;
@@ -187,7 +199,7 @@ var
   ARetValue: TValue;
 
   AParams: array of TValue;
-  I: integer;
+  I: Integer;
   LContext: TRttiContext;
   LType: TRttiType;
   LMethod: TRttiMethod;
@@ -199,7 +211,7 @@ begin
     AFuncRec := PNativeFunctionRecord(xdata);
     if AFuncRec <> nil then
     begin
-      AValue := GET_VALUE(args, 0);
+      AValue := GET_VALUE(Args, 0);
       if VALUE_ISA_INSTANCE(AValue) then
       begin
         AObj := TGravityWrapperBase(gravity_value_xdata(AValue));
@@ -208,34 +220,38 @@ begin
           LType := LContext.GetType(AFuncRec.ClassItem.NativeClass);
           LMethod := LType.GetMethod(String(AnsiString(AFuncRec^.FuncName)));
           if (AObj <> nil) and (LMethod <> nil) and
-            AObj.InheritsFrom(TGravityWrapperBase)then
+            AObj.InheritsFrom(TGravityWrapperBase) then
           begin
-            if nargs > 1 then
+            if NArgs > 1 then
             begin
-              SetLength(AParams, nargs-1);
-              for I := 1 to nargs-1 do
+              SetLength(AParams, NArgs - 1);
+              for I := 1 to NArgs - 1 do
               begin
-                AValue := GET_VALUE(args, I);
+                AValue := GET_VALUE(Args, I);
                 if VALUE_ISA_BASIC_TYPE(AValue) then
                 begin
                   if VALUE_ISA_INT(AValue) then
-                    AParams[I-1] := TValue.From(VALUE_AS_INT(AValue))
+                    AParams[I - 1] := TValue.From(VALUE_AS_INT(AValue))
                   else if VALUE_ISA_FLOAT(AValue) then
-                    AParams[I-1] := TValue.From(VALUE_AS_FLOAT(AValue))
+                    AParams[I - 1] := TValue.From(VALUE_AS_FLOAT(AValue))
                   else if VALUE_ISA_STRING(AValue) then
-                    AParams[I-1] := TValue.From(String(AnsiString(VALUE_AS_CSTRING(AValue))))
+                    AParams[I - 1] :=
+                      TValue.From(String(AnsiString(VALUE_AS_CSTRING(AValue))))
                   else if VALUE_ISA_BOOL(AValue) then
-                    AParams[I-1] := TValue.From(VALUE_AS_BOOL(AValue))
-                end else
+                    AParams[I - 1] := TValue.From(VALUE_AS_BOOL(AValue))
+                end
+                else
                 begin
                   LParams := LMethod.GetParameters;
                   if VALUE_ISA_INSTANCE(AValue) then
                   begin
-                    if Assigned(LParams[I-1].ParamType) then
+                    if Assigned(LParams[I - 1].ParamType) then
                     begin
                       AInstVal := VALUE_AS_INSTANCE(AValue);
-                      if (AInstVal.xdata <> nil) and (TObject(AInstVal).InheritsFrom(TGravityWrapperBase)) then
-                        AParams[I-1] := TValue.From(TObject(AInstVal))
+                      if (AInstVal.xdata <> nil) and
+                        (TObject(AInstVal).InheritsFrom(TGravityWrapperBase))
+                      then
+                        AParams[I - 1] := TValue.From(TObject(AInstVal))
                     end;
                   end;
                 end;
@@ -248,13 +264,15 @@ begin
                 else if ARetValue.Kind = tkInt64 then
                   RETURN_VALUE(vm, VALUE_FROM_INT(ARetValue.AsInt64), vindex)
                 else if ARetValue.Kind = tkFloat then
-                  RETURN_VALUE(vm, VALUE_FROM_FLOAT(ARetValue.AsExtended), vindex)
-                else if (ARetValue.Kind = tkString) or (ARetValue.Kind = tkChar) or
-                  (ARetValue.Kind = tkWString) or (ARetValue.Kind = tkWChar) or
-                  (ARetValue.Kind = tkUString) then
+                  RETURN_VALUE(vm,
+                    VALUE_FROM_FLOAT(ARetValue.AsExtended), vindex)
+                else if (ARetValue.Kind = tkString) or (ARetValue.Kind = tkChar)
+                  or (ARetValue.Kind = tkWString) or (ARetValue.Kind = tkWChar)
+                  or (ARetValue.Kind = tkUString) then
                 begin
                   AStr := AnsiString(ARetValue.AsString);
-                  RETURN_VALUE(vm, VALUE_FROM_STRING(vm, AStr, Length(AStr)), vindex)
+                  RETURN_VALUE(vm, VALUE_FROM_STRING(vm, AStr,
+                    Length(AStr)), vindex)
                 end;
               end;
             end;
@@ -267,7 +285,7 @@ begin
   end;
 end;
 
-function delphi_bridge_getvalue(vm: Pgravity_vm; xdata: Pointer;
+function delphi_bridge_getvalue(vm: Pgravity_vm; xdata: pointer;
   target: gravity_value_t; const key: PAnsiChar; vindex: UInt32)
   : Boolean; cdecl;
 begin
@@ -276,7 +294,7 @@ begin
   end;
 end;
 
-function delphi_bridge_setvalue(vm: Pgravity_vm; xdata: Pointer;
+function delphi_bridge_setvalue(vm: Pgravity_vm; xdata: pointer;
   target: gravity_value_t; const key: PAnsiChar; value: gravity_value_t)
   : Boolean; cdecl;
 begin
@@ -285,7 +303,7 @@ begin
   end;
 end;
 
-function delphi_bridge_getundef(vm: Pgravity_vm; xdata: Pointer;
+function delphi_bridge_getundef(vm: Pgravity_vm; xdata: pointer;
   target: gravity_value_t; const key: PAnsiChar; vindex: UInt32)
   : Boolean; cdecl;
 begin
@@ -294,7 +312,7 @@ begin
   end;
 end;
 
-function delphi_bridge_setundef(vm: Pgravity_vm; xdata: Pointer;
+function delphi_bridge_setundef(vm: Pgravity_vm; xdata: pointer;
   target: gravity_value_t; const key: PAnsiChar; value: gravity_value_t)
   : Boolean; cdecl;
 begin
@@ -303,14 +321,14 @@ begin
   end;
 end;
 
-function delphi_bridge_clone(vm: Pgravity_vm; xdata: Pointer): Pointer; cdecl;
+function delphi_bridge_clone(vm: Pgravity_vm; xdata: pointer): pointer; cdecl;
 begin
   with GravityEng do
   begin
   end;
 end;
 
-function delphi_bridge_equals(vm: Pgravity_vm; obj1: Pointer; obj2: Pointer)
+function delphi_bridge_equals(vm: Pgravity_vm; obj1: pointer; obj2: pointer)
   : Boolean; cdecl;
 begin
   with GravityEng do
@@ -326,7 +344,7 @@ begin
   end;
 end;
 
-function delphi_bridge_string(vm: Pgravity_vm; xdata: Pointer; len: PUInt32)
+function delphi_bridge_string(vm: Pgravity_vm; xdata: pointer; len: PUInt32)
   : PAnsiChar; cdecl;
 begin
   with GravityEng do
@@ -334,7 +352,7 @@ begin
   end;
 end;
 
-procedure delphi_bridge_blacken(vm: Pgravity_vm; xdata: Pointer); cdecl;
+procedure delphi_bridge_blacken(vm: Pgravity_vm; xdata: pointer); cdecl;
 begin
   with GravityEng do
   begin
@@ -387,7 +405,8 @@ end;
 
 procedure TAnsiStrings.Delete(Index: Integer);
 begin
-  if (Index < 0) or (Index >= FCount) then Error(@SListIndexError, Index);
+  if (Index < 0) or (Index >= FCount) then
+    Error(@SListIndexError, Index);
   Finalize(FList[Index]);
   Dec(FCount);
   if Index < FCount then
@@ -407,10 +426,10 @@ begin
   SetCapacity(0);
 end;
 
-procedure TAnsiStrings.Error(Msg: PResStringRec; Data: Integer);
+procedure TAnsiStrings.Error(Msg: PResStringRec; data: Integer);
 begin
-  raise EStringListError.CreateFmt(LoadResString(Msg), [Data]) at
-    PPointer(PByte(@Msg) + SizeOf(Msg) + SizeOf(Self) + SizeOf(Pointer))^;
+  raise EStringListError.CreateFmt(LoadResString(Msg), [data])
+    at PPointer(PByte(@Msg) + SizeOf(Msg) + SizeOf(Self) + SizeOf(pointer))^;
 end;
 
 function TAnsiStrings.Get(Index: Integer): AnsiString;
@@ -429,28 +448,34 @@ procedure TAnsiStrings.Grow;
 var
   Delta: Integer;
 begin
-  if FCapacity > 64 then Delta := FCapacity div 4 else
-    if FCapacity > 8 then Delta := 16 else
-      Delta := 4;
+  if FCapacity > 64 then
+    Delta := FCapacity div 4
+  else if FCapacity > 8 then
+    Delta := 16
+  else
+    Delta := 4;
   SetCapacity(FCapacity + Delta);
 end;
 
 function TAnsiStrings.IndexOf(const S: AnsiString): Integer;
 begin
   for Result := 0 to GetCount - 1 do
-    if CompareStrings(Get(Result), S) = 0 then Exit;
+    if CompareStrings(Get(Result), S) = 0 then
+      Exit;
   Result := -1;
 end;
 
 procedure TAnsiStrings.Insert(Index: Integer; const S: AnsiString);
 begin
-  if (Index < 0) or (Index > FCount) then Error(@SListIndexError, Index);
+  if (Index < 0) or (Index > FCount) then
+    Error(@SListIndexError, Index);
   InsertItem(Index, S);
 end;
 
 procedure TAnsiStrings.InsertItem(Index: Integer; const S: AnsiString);
 begin
-  if FCount = FCapacity then Grow;
+  if FCount = FCapacity then
+    Grow;
   if Index < FCount then
   begin
     System.Move(FList[Index], FList[Index + 1],
@@ -458,8 +483,8 @@ begin
     System.Move(FList[Index], FList[Index + 1],
       (FCount - Index) * SizeOf(PAnsiChar));
   end;
-  Pointer(FList[Index]) := nil;
-  Pointer(FPtr[Index]) := nil;
+  pointer(FList[Index]) := nil;
+  pointer(FPtr[Index]) := nil;
   FList[Index] := S;
   FPtr[Index] := PAnsiChar(FList[Index]);
   Inc(FCount);
@@ -478,19 +503,22 @@ begin
 end;
 
 type
-  TGravityGetClass = procedure (AClass: TGravityWrapperBaseClass) of object;
+  TGravityGetClass = procedure(AClass: TGravityWrapperBaseClass) of object;
+
   TGravityClassReg = class
   private
     FWrapperList: TGravityClassList;
     FWrapperGroupClasses: TList;
     FActive: Boolean;
-    function BestClass(AClass: TGravityWrapperBaseClass): TGravityWrapperBaseClass;
+    function BestClass(AClass: TGravityWrapperBaseClass)
+      : TGravityWrapperBaseClass;
     function GetClassNames: TArray<String>;
   public
     constructor Create(AClass: TGravityWrapperBaseClass);
     destructor Destroy; override;
 
-    class function BestGroup(Group1, Group2: TGravityClassReg; AClass: TGravityWrapperBaseClass): TGravityClassReg;
+    class function BestGroup(Group1, Group2: TGravityClassReg;
+      AClass: TGravityWrapperBaseClass): TGravityClassReg;
 
     function GetClass(const AClassName: string): TGravityWrapperBaseClass;
     function GetGravityClass(const AClassName: string): Pgravity_class_t;
@@ -508,7 +536,7 @@ type
     FWrapperGroups: TList;
     FLock: TRTLCriticalSection;
     function FindGroup(AClass: TGravityWrapperBaseClass): TGravityClassReg;
-    function GetName(i: integer): string;
+    function GetName(I: Integer): string;
   public
     constructor Create;
     destructor Destroy; override;
@@ -521,14 +549,13 @@ type
     procedure Unlock;
     procedure UnregisterClass(AClass: TGravityWrapperBaseClass);
 
-    property Names[i: integer]: string read GetName;
+    property Names[I: Integer]: string read GetName;
   end;
 
 var
   GravityRegGroups: TGravityClassRegs;
 
-
-function native_classes_callback(xdata: Pointer): PPAnsiChar; cdecl;
+function native_classes_callback(xdata: pointer): PPAnsiChar; cdecl;
 var
   APtr: TAnsiCharItemList;
 begin
@@ -560,15 +587,13 @@ begin
   end;
 end;
 
-
-
 { TGravityClassList }
 function TGravityClassList.CollectionNames: TArray<String>;
 var
-  I: integer;
+  I: Integer;
 begin
   SetLength(Result, Count);
-  for I := 0 to Count-1 do
+  for I := 0 to Count - 1 do
     Result[I] := Items[I].DisplayName;
 end;
 
@@ -577,11 +602,11 @@ begin
   inherited Create(TGravityClassItem);
 end;
 
-function TGravityClassList.IndexOf(Item: Pointer): Integer;
+function TGravityClassList.IndexOf(Item: pointer): Integer;
 begin
-  for Result := 0 to Count-1 do
+  for Result := 0 to Count - 1 do
     if TGravityClassItem(Items[Result]).NativeClass = Item then
-      exit;
+      Exit;
   Result := -1;
 end;
 
@@ -611,12 +636,50 @@ var
     with GravityEng do
     begin
       GetMem(AFuncRec, SizeOf(TNativeFunctionRecord));
+      AFuncRec^.FuncType := ftMethod;
       AFuncRec^.ClassItem := Self;
-      GetMem(AFuncRec^.FuncName, Length(AnsiString(LMethod.Name))+1);
+      GetMem(AFuncRec^.FuncName, Length(AnsiString(LMethod.Name)) + 1);
       System.AnsiStrings.StrPCopy(AFuncRec^.FuncName, AnsiString(LMethod.Name));
       gravity_class_bind(AKlass, AnsiString(LMethod.Name),
         NEW_CLOSURE_VALUE_BRIDGED(AnsiString(LMethod.Name), AFuncRec));
     end;
+  end;
+
+  procedure InternalRegisterProperty(AKlass: Pgravity_class_t);
+  var
+    LPropInfo: PPropInfo;
+    AGetterRec, ASetterRec: PNativeFunctionRecord;
+
+  begin
+    LPropInfo := TRttiInstanceProperty(LProperty).PropInfo;
+    AGetterRec := nil;
+    ASetterRec := nil;
+    if LPropInfo.GetProc <> nil then
+    begin
+      GetMem(AGetterRec, SizeOf(TNativeFunctionRecord));
+      AGetterRec^.FuncType := ftPropGetter;
+      AGetterRec^.ClassItem := Self;
+      GetMem(AGetterRec^.FuncName, Length(AnsiString(LProperty.Name)) + 1);
+      System.AnsiStrings.StrPCopy(AGetterRec^.FuncName, AnsiString(LProperty.Name));
+    end;
+    if LPropInfo.SetProc <> nil then
+    begin
+      GetMem(ASetterRec, SizeOf(TNativeFunctionRecord));
+      ASetterRec^.FuncType := ftPropSetter;
+      ASetterRec^.ClassItem := Self;
+      GetMem(ASetterRec^.FuncName, Length(AnsiString(LProperty.Name)) + 1);
+      System.AnsiStrings.StrPCopy(ASetterRec^.FuncName, AnsiString(LProperty.Name));
+    end;
+    with GravityEng do
+    begin
+      gravity_class_bind(AKlass, AnsiString(LProperty.Name),
+          NEW_CLOSURE_VALUE_SPECIAL(AnsiString(LMethod.Name),
+          0, AGetterRec, ASetterRec));
+    end;
+  end;
+
+  procedure InternalRegisterField(AKlass: Pgravity_class_t);
+  begin
   end;
 
 begin
@@ -627,7 +690,7 @@ begin
       LContext := TRttiContext.Create;
       LType := LContext.GetType(FNativeClass);
       if LType = nil then
-        exit;
+        Exit;
       try
         FGravityClass := gravity_class_new_pair(vm,
           AnsiString(FNativeClass.ClassName), nil, 0, 0);
@@ -635,24 +698,27 @@ begin
         for LMethod in LType.GetMethods do
           if LMethod.Visibility >= mvPublished then
             case LMethod.MethodKind of
-             mkProcedure,
-             mkFunction: InternalRegisterMethod(FGravityClass);
-             mkClassProcedure,
-             mkClassFunction: InternalRegisterMethod(AMeta);
+              mkProcedure, mkFunction:
+                InternalRegisterMethod(FGravityClass);
+              mkClassProcedure, mkClassFunction:
+                InternalRegisterMethod(AMeta);
             end;
         for LProperty in LType.GetProperties do
-        begin
-        end;
+          if (LProperty.Visibility >= mvPublished) and
+            (LProperty is TRttiInstanceProperty) then
+              InternalRegisterProperty(FGravityClass);
         for LFields in LType.GetFields do
         begin
+          if LFields.Visibility >= mvPublished then
+            InternalRegisterField(FGravityClass);
         end;
       finally
         LContext.Free;
       end;
     end;
     if vm <> nil then
-    gravity_vm_setvalue(vm, AnsiString(FNativeClass.ClassName),
-      VALUE_FROM_OBJECT(FGravityClass));
+      gravity_vm_setvalue(vm, AnsiString(FNativeClass.ClassName),
+        VALUE_FROM_OBJECT(FGravityClass));
   end;
 end;
 
@@ -670,28 +736,29 @@ procedure TGravityClassItem.UnregisterClass(vm: Pgravity_vm);
 var
   AMeta: Pgravity_class_t;
 begin
-  if Assigned(FGravityClass) then  
-  with GravityEng do
-  begin
-    AMeta := gravity_class_get_meta(FGravityClass);
-    gravity_hash_iterate(AMeta^.htable, delphi_bridge_hash_iterate, vm);
-    gravity_hash_iterate(FGravityClass^.htable, delphi_bridge_hash_iterate, vm);
-  end;
+  if Assigned(FGravityClass) then
+    with GravityEng do
+    begin
+      AMeta := gravity_class_get_meta(FGravityClass);
+      gravity_hash_iterate(AMeta^.htable, delphi_bridge_hash_iterate, vm);
+      gravity_hash_iterate(FGravityClass^.htable,
+        delphi_bridge_hash_iterate, vm);
+    end;
 end;
 
 { TGravityClassReg }
 
-function TGravityClassReg.BestClass(
-  AClass: TGravityWrapperBaseClass): TGravityWrapperBaseClass;
+function TGravityClassReg.BestClass(AClass: TGravityWrapperBaseClass)
+  : TGravityWrapperBaseClass;
 var
-  AItem: Pointer;
+  AItem: pointer;
 begin
   Result := nil;
   for AItem in FWrapperGroupClasses do
   begin
-    if AClass.InheritsFrom(TGravityWrapperBaseClass(AItem)) and (
-    (Result = nil) or
-    (TGravityWrapperBaseClass(AItem).InheritsFrom(Result))) then
+    if AClass.InheritsFrom(TGravityWrapperBaseClass(AItem)) and
+      ((Result = nil) or (TGravityWrapperBaseClass(AItem).InheritsFrom(Result)))
+    then
       Result := TGravityWrapperBaseClass(AItem);
   end;
 end;
@@ -713,7 +780,8 @@ begin
     Result := Group2;
     if Group2Class = nil then
       Result := nil;
-  end else
+  end
+  else
   begin
     Result := Group1;
     if Group2Class <> nil then
@@ -740,24 +808,24 @@ begin
   inherited Destroy;
 end;
 
-function TGravityClassReg.GetClass(
-  const AClassName: string): TGravityWrapperBaseClass;
+function TGravityClassReg.GetClass(const AClassName: string)
+  : TGravityWrapperBaseClass;
 var
   I: Integer;
-  AItem: Pointer;
+  AItem: pointer;
 begin
   for AItem in FWrapperList do
   begin
     Result := TGravityWrapperBaseClass(TGravityClassItem(AItem).NativeClass);
     if Result.ClassNameIs(AClassName) then
-      exit;
+      Exit;
   end;
   Result := nil;
 end;
 
 procedure TGravityClassReg.GetClasses(Proc: TGravityGetClass);
 var
-  AItem: Pointer;
+  AItem: pointer;
 begin
   for AItem in FWrapperList do
     Proc(TGravityWrapperBaseClass(TGravityClassItem(AItem).NativeClass));
@@ -768,17 +836,17 @@ begin
   Result := FWrapperList.CollectionNames;
 end;
 
-function TGravityClassReg.GetGravityClass(
-  const AClassName: string): Pgravity_class_t;
+function TGravityClassReg.GetGravityClass(const AClassName: string)
+  : Pgravity_class_t;
 var
   I: Integer;
-  AItem: Pointer;
+  AItem: pointer;
 begin
   for AItem in FWrapperList do
   begin
     Result := TGravityClassItem(AItem).FGravityClass;
     if TGravityClassItem(AItem).FNativeClass.ClassNameIs(AClassName) then
-      exit;
+      Exit;
   end;
   Result := nil;
 end;
@@ -811,7 +879,6 @@ begin
     FWrapperList.Delete(I);
 end;
 
-
 { TGravityClassRegs }
 
 constructor TGravityClassRegs.Create;
@@ -829,7 +896,7 @@ end;
 
 destructor TGravityClassRegs.Destroy;
 var
-  I: integer;
+  I: Integer;
 begin
   for I := 0 to FWrapperGroups.Count - 1 do
     TGravityClassReg(FWrapperGroups[I]).Free;
@@ -838,48 +905,53 @@ begin
   inherited Destroy;
 end;
 
-function TGravityClassRegs.FindGroup(
-  AClass: TGravityWrapperBaseClass): TGravityClassReg;
+function TGravityClassRegs.FindGroup(AClass: TGravityWrapperBaseClass)
+  : TGravityClassReg;
 var
   I: Integer;
-  AItem: Pointer;
+  AItem: pointer;
 begin
   Result := nil;
   for AItem in FWrapperGroups do
-    Result := TGravityClassReg.BestGroup(TGravityClassReg(AItem), Result, AClass);
+    Result := TGravityClassReg.BestGroup(TGravityClassReg(AItem),
+      Result, AClass);
 end;
 
-function TGravityClassRegs.GetClass(
-  const AClassName: string): TGravityWrapperBaseClass;
+function TGravityClassRegs.GetClass(const AClassName: string)
+  : TGravityWrapperBaseClass;
 var
-  AItem: Pointer;
+  AItem: pointer;
 begin
   Result := nil;
   for AItem in FWrapperGroups do
     with TGravityClassReg(AItem) do
     begin
-      if Active then Result := GetClass(AClassName);
-      if Result <> nil then Exit;
+      if Active then
+        Result := GetClass(AClassName);
+      if Result <> nil then
+        Exit;
     end;
 end;
 
-function TGravityClassRegs.GetGravityClass(
-  const AClassName: string): Pgravity_class_t;
+function TGravityClassRegs.GetGravityClass(const AClassName: string)
+  : Pgravity_class_t;
 var
-  AItem: Pointer;
+  AItem: pointer;
 begin
   Result := nil;
   for AItem in FWrapperGroups do
     with TGravityClassReg(AItem) do
     begin
-      if Active then Result := GetGravityClass(AClassName);
-      if Result <> nil then Exit;
+      if Active then
+        Result := GetGravityClass(AClassName);
+      if Result <> nil then
+        Exit;
     end;
 end;
 
-function TGravityClassRegs.GetName(i: integer): string;
+function TGravityClassRegs.GetName(I: Integer): string;
 begin
-  Result := FNameList[i];
+  Result := FNameList[I];
 end;
 
 procedure TGravityClassRegs.Lock;
@@ -899,15 +971,15 @@ begin
   end;
 end;
 
-function TGravityClassRegs.Registered(
-  AClass: TGravityWrapperBaseClass): Boolean;
+function TGravityClassRegs.Registered(AClass: TGravityWrapperBaseClass)
+  : Boolean;
 var
-  AItem: Pointer;
+  AItem: pointer;
 begin
   Result := True;
   for AItem in FWrapperGroups do
     if TGravityClassReg(AItem).Registered(AClass) then
-      exit;
+      Exit;
   Result := False;
 end;
 
@@ -940,7 +1012,8 @@ begin
     while not GravityRegGroups.Registered(AClass) do
     begin
       GravityRegGroups.RegisterClass(AClass);
-      if AClass = TGravityWrapperBase then Break;
+      if AClass = TGravityWrapperBase then
+        Break;
       AClass := TGravityWrapperBaseClass(AClass.ClassParent);
     end;
   finally
@@ -974,28 +1047,28 @@ begin
     UnRegisterGravityClass(AClasses[I]);
 end;
 
-procedure BindNativeClass(AVM: Pgravity_vm);
+procedure BindNativeClass(AVm: Pgravity_vm);
 var
-  AGroup, AItem: Pointer;
+  AGroup, AItem: pointer;
 begin
   with GravityEng do
   begin
-    gravity_register_bridges(AVM);
+    gravity_register_bridges(AVm);
     for AGroup in GravityRegGroups.FWrapperGroups do
       for AItem in TGravityClassReg(AGroup).FWrapperList do
-        TGravityClassItem(AItem).RegisterClass(AVM);
+        TGravityClassItem(AItem).RegisterClass(AVm);
   end;
 end;
 
-procedure UnbindNativeClass(AVM: Pgravity_vm);
+procedure UnbindNativeClass(AVm: Pgravity_vm);
 var
-  AGroup, AItem: Pointer;
+  AGroup, AItem: pointer;
 begin
   with GravityEng do
   begin
     for AGroup in GravityRegGroups.FWrapperGroups do
       for AItem in TGravityClassReg(AGroup).FWrapperList do
-        TGravityClassItem(AItem).UnregisterClass(AVM);
+        TGravityClassItem(AItem).UnregisterClass(AVm);
   end;
 end;
 
@@ -1007,7 +1080,8 @@ end;
 function FindNativeClass(const ClassName: string): TGravityWrapperBaseClass;
 begin
   Result := GetNativeClass(ClassName);
-  if Result = nil then ClassNotFound(ClassName);
+  if Result = nil then
+    ClassNotFound(ClassName);
 end;
 
 function GetNativeClass(const AClassName: string): TGravityWrapperBaseClass;
@@ -1030,7 +1104,8 @@ begin
   end;
 end;
 
-procedure DefineNativeObject(AVM: Pgravity_vm; const AVarName: String; AObj: TGravityWrapperBase);
+procedure DefineNativeObject(AVm: Pgravity_vm; const AVarName: String;
+  AObj: TGravityWrapperBase);
 var
   AClass: Pgravity_class_t;
   AInstance: Pgravity_instance_t;
@@ -1040,10 +1115,11 @@ begin
     AClass := GetGravityClass(AObj.ClassName);
     if AClass <> nil then
     begin
-      AInstance := gravity_instance_new(AVM, AClass);
+      AInstance := gravity_instance_new(AVm, AClass);
       gravity_instance_setxdata(AInstance, AObj);
       AObj.FGravityInstance := AInstance;
-      gravity_vm_setvalue(AVM, AnsiString(AVarName), VALUE_FROM_OBJECT(AInstance));
+      gravity_vm_setvalue(AVm, AnsiString(AVarName),
+        VALUE_FROM_OBJECT(AInstance));
       GravityRegGroups.RegisterName(AVarName);
     end;
   end;
@@ -1073,8 +1149,80 @@ begin
   inherited Destroy;
 end;
 
+function GravityCall(AVm: Pgravity_vm; AFunc, ASender: gravity_value_t;
+  Args: array of const): Variant;
+var
+  ALen, I: Integer;
+  AParams: gravity_value_t_array;
+  AVarRec: TVarRec;
+  AResult: gravity_value_t;
+begin
+  with GravityEng do
+  begin
+    if VALUE_ISA_CLOSURE(AFunc) then
+    begin
+      ALen := Length(Args);
+      if ALen > 0 then
+      begin
+        SetLength(AParams, ALen);
+        for I := Low(Args) to High(Args) do
+        begin
+          AVarRec := Args[I];
+          case AVarRec.VType of
+            vtBoolean:
+              AParams[I] := VALUE_FROM_BOOL(AVarRec.VBoolean);
+            vtInteger:
+              AParams[I] := VALUE_FROM_INT(AVarRec.VInteger);
+            vtInt64:
+              AParams[I] := VALUE_FROM_INT(AVarRec.VInteger);
+            vtExtended:
+              AParams[I] := VALUE_FROM_FLOAT(AVarRec.VExtended^);
+            vtCurrency:
+              AParams[I] := VALUE_FROM_FLOAT(AVarRec.VCurrency^);
+            vtString:
+              AParams[I] := VALUE_FROM_STRING(AVm,
+                PAnsiString(AVarRec.VAnsiString)^,
+                Length(PAnsiString(AVarRec.VAnsiString)^));
+            vtChar:
+              AParams[I] := VALUE_FROM_STRING(AVm, AVarRec.VChar,
+                Length(AVarRec.VChar));
+            vtWideChar:
+              AParams[I] := VALUE_FROM_STRING(AVm, AVarRec.VWideChar,
+                Length(AVarRec.VWideChar));
+            vtWideString:
+              AParams[I] := VALUE_FROM_STRING(AVm,
+                WideString(AVarRec.VWideString),
+                Length(WideString(AVarRec.VWideString)));
+          end;
+        end;
+      end;
+      Result := None;
+      try
+        if gravity_vm_runclosure(AVm, VALUE_AS_CLOSURE(AFunc), ASender,
+          @AParams[0], Length(AParams)) then
+        begin
+          AResult := gravity_vm_result(AVm);
+          if VALUE_ISA_BASIC_TYPE(AResult) then
+          begin
+            if VALUE_ISA_INT(AResult) then
+              Result := VALUE_AS_INT(AResult)
+            else if VALUE_ISA_FLOAT(AResult) then
+              Result := VALUE_AS_FLOAT(AResult)
+            else if VALUE_ISA_BOOL(AResult) then
+              Result := VALUE_AS_BOOL(AResult)
+            else if VALUE_ISA_STRING(AResult) then
+              Result := AnsiString(VALUE_AS_CSTRING(AResult));
+          end;
+        end;
+      finally
+        SetLength(AParams, 0);
+      end;
+    end;
+  end;
+end;
+
 initialization
-  GravityRegGroups := TGravityClassRegs.Create;
+
+GravityRegGroups := TGravityClassRegs.Create;
 
 end.
-
