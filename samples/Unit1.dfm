@@ -11,6 +11,8 @@ object Form1: TForm1
   Font.Name = 'Tahoma'
   Font.Style = []
   OldCreateOrder = False
+  OnCreate = FormCreate
+  OnDestroy = FormDestroy
   PixelsPerInch = 96
   TextHeight = 13
   object Button1: TButton
@@ -28,5 +30,14 @@ object Form1: TForm1
     Width = 613
     Height = 241
     TabOrder = 1
+  end
+  object Button2: TButton
+    Left = 89
+    Top = 16
+    Width = 75
+    Height = 25
+    Caption = 'Button2'
+    TabOrder = 2
+    OnClick = Button2Click
   end
 end
