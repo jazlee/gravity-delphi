@@ -144,6 +144,7 @@ var
   AFunc, AOut: gravity_value_t;
   AParams: gravity_value_t_array;
   ADecObj: TExampleDec;
+  ARetVal: Variant;
 begin
 (*
   ASrc := 'func mul(a, b) {return a * b} func main() {var a = 54; var b = 27; '+
@@ -209,6 +210,12 @@ begin
 
     // call gravity function from native
     AFunc := gravity_vm_getvalue(FVM, 'test_dec', length('test_dec'));
+    ARetVal := GravityCall(FVM, AFunc, VALUE_FROM_NULL, [800, 725]);
+    if ARetVal <> None then
+    begin
+      Memo1.Lines.Add(Format('RESULT: %f',[Int(ARetVal)]));
+    end;
+    {
     if VALUE_ISA_CLOSURE(AFunc) then
     begin
       fclosure := VALUE_AS_CLOSURE(AFunc);
@@ -226,6 +233,7 @@ begin
         SetLength(AParams, 0);
       end;
     end;
+    }
 
     AFunc := gravity_vm_getvalue(FVM, 'mul', length('mul'));
     if VALUE_ISA_CLOSURE(AFunc) then
