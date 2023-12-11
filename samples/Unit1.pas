@@ -215,25 +215,6 @@ begin
     begin
       Memo1.Lines.Add(Format('RESULT: %f',[Int(ARetVal)]));
     end;
-    {
-    if VALUE_ISA_CLOSURE(AFunc) then
-    begin
-      fclosure := VALUE_AS_CLOSURE(AFunc);
-      SetLength(AParams, 2);
-      AParams[0] := VALUE_FROM_INT(800);
-      AParams[1] := VALUE_FROM_INT(725);
-      try
-        if gravity_vm_runclosure(FVM, fclosure, VALUE_FROM_NULL, @AParams[0], 2) then
-        begin
-          val := gravity_vm_result(FVM);
-          gravity_value_dump(FVM, val, @AOutput, SizeOf(AOutput));
-          Memo1.Lines.Add(Format('RESULT: %s %d',[AOutput, val.f2.n]));
-        end;
-      finally
-        SetLength(AParams, 0);
-      end;
-    end;
-    }
 
     AFunc := gravity_vm_getvalue(FVM, 'mul', length('mul'));
     if VALUE_ISA_CLOSURE(AFunc) then
