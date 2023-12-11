@@ -6,10 +6,14 @@ uses
   System.SysUtils, System.Classes, Winapi.Windows, Gravity.GVIntf;
 
 type
+  TGravityClassItem = class;
+
   TGravityWrapperBase = class
   private
     FGravityInstance: Pgravity_instance_t;
   protected
+    class function RegisterClass(vm: Pgravity_vm; var ClassItem: TGravityClassItem): boolean; virtual;
+    class function UnregisterClass(vm: Pgravity_vm; var ClassItem: TGravityClassItem): boolean; virtual;
 
   public
     constructor Create;
@@ -17,6 +21,25 @@ type
   end;
 
   TGravityWrapperBaseClass = class of TGravityWrapperBase;
+
+  TGravityClassItem = class(TCollectionItem)
+  private
+    FGravityClass: Pgravity_class_t;
+    FNativeClass: TGravityWrapperBaseClass;
+  protected
+
+    function GetDisplayName: string; override;
+
+    procedure RegisterClass(vm: Pgravity_vm);
+    procedure UnregisterClass(vm: Pgravity_vm);
+  public
+
+    procedure SetNativeClass(AClass: TGravityWrapperBaseClass);
+    procedure SetGravityClass(AClass: Pgravity_class_t);
+
+    property NativeClass: TGravityWrapperBaseClass read FNativeClass;
+    property GravityClass: Pgravity_class_t read FGravityClass;
+  end;
 
 function GravityCall(AVm: Pgravity_vm; AFunc, ASender: gravity_value_t;
   Args: array of const): Variant;
@@ -80,25 +103,6 @@ type
 
     property Count: Integer read GetCount;
     property Strings[Index: Integer]: AnsiString read Get; default;
-  end;
-
-  TGravityClassItem = class(TCollectionItem)
-  private
-    FGravityClass: Pgravity_class_t;
-    FNativeClass: TGravityWrapperBaseClass;
-  protected
-
-    function GetDisplayName: string; override;
-
-    procedure RegisterClass(vm: Pgravity_vm);
-    procedure UnregisterClass(vm: Pgravity_vm);
-  public
-
-    procedure SetNativeClass(AClass: TGravityWrapperBaseClass);
-    procedure SetGravityClass(AClass: Pgravity_class_t);
-
-    property NativeClass: TGravityWrapperBaseClass read FNativeClass;
-    property GravityClass: Pgravity_class_t read FGravityClass;
   end;
 
   TGravityClassList = class(TCollection)
@@ -683,6 +687,8 @@ var
   end;
 
 begin
+  if FNativeClass.RegisterClass(vm, Self) then
+    exit;
   with GravityEng do
   begin
     if not Assigned(FGravityClass) then
@@ -736,14 +742,14 @@ procedure TGravityClassItem.UnregisterClass(vm: Pgravity_vm);
 var
   AMeta: Pgravity_class_t;
 begin
-  if Assigned(FGravityClass) then
-    with GravityEng do
-    begin
-      AMeta := gravity_class_get_meta(FGravityClass);
-      gravity_hash_iterate(AMeta^.htable, delphi_bridge_hash_iterate, vm);
-      gravity_hash_iterate(FGravityClass^.htable,
-        delphi_bridge_hash_iterate, vm);
-    end;
+  if Assigned(FGravityClass) and (not FNativeClass.UnregisterClass(vm, Self)) then
+  with GravityEng do
+  begin
+    AMeta := gravity_class_get_meta(FGravityClass);
+    gravity_hash_iterate(AMeta^.htable, delphi_bridge_hash_iterate, vm);
+    gravity_hash_iterate(FGravityClass^.htable,
+      delphi_bridge_hash_iterate, vm);
+  end;
 end;
 
 { TGravityClassReg }
@@ -1147,6 +1153,18 @@ destructor TGravityWrapperBase.Destroy;
 begin
   FGravityInstance := nil;
   inherited Destroy;
+end;
+
+class function TGravityWrapperBase.RegisterClass(vm: Pgravity_vm;
+  var ClassItem: TGravityClassItem): boolean;
+begin
+  Result := False;
+end;
+
+class function TGravityWrapperBase.UnregisterClass(vm: Pgravity_vm;
+  var ClassItem: TGravityClassItem): boolean;
+begin
+  Result := False;
 end;
 
 function GravityCall(AVm: Pgravity_vm; AFunc, ASender: gravity_value_t;
