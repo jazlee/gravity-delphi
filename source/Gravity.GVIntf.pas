@@ -131,6 +131,15 @@ const
   GRAVITY_CLASS_UPVALUE_NAME = 'Upvalue';
   GRAVITY_CLASS_SYSTEM_NAME = 'System';
 
+  GRAVITY_INTERNAL_LOAD_NAME =     'load';
+  GRAVITY_INTERNAL_LOADS_NAME =    'loads';
+  GRAVITY_INTERNAL_STORE_NAME =    'store';
+  GRAVITY_INTERNAL_LOADAT_NAME =   'loadat';
+  GRAVITY_INTERNAL_STOREAT_NAME =  'storeat';
+  GRAVITY_INTERNAL_NOTFOUND_NAME = 'notfound';
+  GRAVITY_INTERNAL_EXEC_NAME =     'exec';
+  GRAVITY_INTERNAL_LOOP_NAME =     'loop';
+
 type
   // Forward declarations
   PPAnsiChar = ^PAnsiChar;
@@ -1352,6 +1361,23 @@ type
     function TryLoadLibrary: Boolean;
     procedure CheckLibraryLoaded;
 
+    function GetClassClosure: Pgravity_class_t;
+    function GetClassBool: Pgravity_class_t;
+    function GetClassClass: Pgravity_class_t;
+    function GetClassFiber: Pgravity_class_t;
+    function GetClassFloat: Pgravity_class_t;
+    function GetClassFunction: Pgravity_class_t;
+    function GetClassInstance: Pgravity_class_t;
+    function GetClassInt: Pgravity_class_t;
+    function GetClassList: Pgravity_class_t;
+    function GetClassMap: Pgravity_class_t;
+    function GetClassNull: Pgravity_class_t;
+    function GetClassObject: Pgravity_class_t;
+    function GetClassRange: Pgravity_class_t;
+    function GetClassString: Pgravity_class_t;
+    function GetClassSystem: Pgravity_class_t;
+    function GetClassUpvalue: Pgravity_class_t;
+
     function gravity_module_new(vm: Pgravity_vm; const identifier: AnsiString)
       : Pgravity_module_t;
     procedure gravity_module_free(vm: Pgravity_vm; m: Pgravity_module_t);
@@ -1752,6 +1778,24 @@ type
     function RETURN_CLOSURE(vm: Pgravity_vm; v: gravity_value_t; index: UInt32): Boolean;
     function RETURN_FIBER: Boolean;
     function RETURN_NOVALUE: Boolean;
+
+    property gravity_class_int: Pgravity_class_t read GetClassInt;
+    property gravity_class_float: Pgravity_class_t read GetClassFloat;
+    property gravity_class_bool: Pgravity_class_t read GetClassBool;
+    property gravity_class_null: Pgravity_class_t read GetClassNull;
+
+    property gravity_class_string: Pgravity_class_t read GetClassString;
+    property gravity_class_object: Pgravity_class_t read GetClassObject;
+    property gravity_class_function: Pgravity_class_t read GetClassFunction;
+    property gravity_class_closure: Pgravity_class_t read GetClassClosure;
+    property gravity_class_fiber: Pgravity_class_t read GetClassFiber;
+    property gravity_class_class: Pgravity_class_t read GetClassClass;
+    property gravity_class_instance: Pgravity_class_t read GetClassInstance;
+    property gravity_class_list: Pgravity_class_t read GetClassList;
+    property gravity_class_map: Pgravity_class_t read GetClassMap;
+    property gravity_class_range: Pgravity_class_t read GetClassRange;
+    property gravity_class_upvalue: Pgravity_class_t read GetClassUpvalue;
+    property gravity_class_system: Pgravity_class_t read GetClassSystem;
   end;
 
   TRegisterGVInterface = function: IGVInterface;
@@ -2408,6 +2452,7 @@ type
     function RETURN_FIBER: Boolean;
     function RETURN_NOVALUE: Boolean;
 
+
     property gravity_class_int: Pgravity_class_t read GetClassInt;
     property gravity_class_float: Pgravity_class_t read GetClassFloat;
     property gravity_class_bool: Pgravity_class_t read GetClassBool;
@@ -2425,6 +2470,7 @@ type
     property gravity_class_range: Pgravity_class_t read GetClassRange;
     property gravity_class_upvalue: Pgravity_class_t read GetClassUpvalue;
     property gravity_class_system: Pgravity_class_t read GetClassSystem;
+
   end;
 
 {$IFDEF GRAVITY_STATIC_LINK}
