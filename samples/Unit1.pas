@@ -26,7 +26,7 @@ var
 
 implementation
 uses
-  Gravity.GVIntf, Gravity.GVClasses, Contnrs;
+  Gravity.GVIntf, Gravity.GVClasses, Gravity.GVSysUtils, Contnrs;
 
 {$R *.dfm}
 
@@ -141,7 +141,7 @@ var
   ASrc: AnsiString;
   AOutput: Array[0..1024] of AnsiChar;
   AIntf: IGVInterface;
-  AFunc, AOut: gravity_value_t;
+  AInstance, AFunc: gravity_value_t;
   AParams: gravity_value_t_array;
   ADecObj: TExampleDec;
   ARetVal: Variant;
@@ -163,7 +163,7 @@ begin
     gravity_vm_loadclosure(FVM, closure);
 
     // call gravity function from native
-    AFunc := gravity_vm_getvalue(FVM, 'mul', length('mul'));
+    AFunc := gravity_vm_getvalue(FVM, 'mul');
     if VALUE_ISA_CLOSURE(AFunc) then
     begin
       fclosure := VALUE_AS_CLOSURE(AFunc);
@@ -182,7 +182,7 @@ begin
       end;
     end;
 
-    ASrc := 'func main() {var a = 54; var b = 27; '+
+    ASrc := 'func main() {var a = 54; var b = SysUtils.date(); '+
     'Win.LogMessage("Hello World, this is from gravity"); '+
     'return Math.abs((a * b) * -1)}';
     compiler := gravity_compiler_create(delegate);
@@ -209,29 +209,37 @@ begin
     gravity_vm_loadclosure(FVM, closure);
 
     // call gravity function from native
-    AFunc := gravity_vm_getvalue(FVM, 'test_dec', length('test_dec'));
+    AFunc := gravity_vm_getvalue(FVM, 'test_dec');
     ARetVal := GravityCall(FVM, AFunc, VALUE_FROM_NULL, [800, 725]);
     if ARetVal <> None then
     begin
       Memo1.Lines.Add(Format('RESULT: %f',[Int(ARetVal)]));
     end;
 
-    AFunc := gravity_vm_getvalue(FVM, 'mul', length('mul'));
-    if VALUE_ISA_CLOSURE(AFunc) then
+    // call instance method directly
+    AInstance := gravity_vm_getvalue(FVM, 'decobj');
+    if VALUE_ISA_INSTANCE(AInstance) then
     begin
-      fclosure := VALUE_AS_CLOSURE(AFunc);
-      SetLength(AParams, 2);
-      AParams[0] := VALUE_FROM_INT(25);
-      AParams[1] := VALUE_FROM_INT(75);
-      try
-        if gravity_vm_runclosure(FVM, fclosure, VALUE_FROM_NULL, @AParams[0], 2) then
-        begin
-          val := gravity_vm_result(FVM);
-          gravity_value_dump(FVM, val, @AOutput, SizeOf(AOutput));
-          Memo1.Lines.Add(Format('RESULT: %s %d',[AOutput, val.f2.n]));
+      AFunc := gravity_instance_getmethod(AInstance, 'Proceed');
+      if VALUE_ISA_CLOSURE(AFunc) then
+      begin
+        fclosure := VALUE_AS_CLOSURE(AFunc);
+        SetLength(AParams, 2);
+        AParams[0] := VALUE_FROM_INT(25);
+        AParams[1] := VALUE_FROM_INT(75);
+        try
+          if gravity_vm_runclosure(FVM, fclosure, AInstance, @AParams[0], 3) then
+          begin
+            val := gravity_vm_result(FVM);
+            gravity_value_dump(FVM, val, @AOutput, SizeOf(AOutput));
+            Memo1.Lines.Add(Format('RESULT: %s %d',[AOutput, val.f2.n]));
+          end else
+          begin
+            Memo1.Lines.Add('Failed to run Proceed');
+          end;
+        finally
+          SetLength(AParams, 0);
         end;
-      finally
-        SetLength(AParams, 0);
       end;
     end;
   end;
@@ -254,6 +262,7 @@ begin
     ADelegate.error_callback := ErrorCallback;
     // ADelegate.optional_classes := OptClassCallBack;
     FVM := gravity_vm_new(@ADelegate);
+    GravitySysUtilsRegister(FVM);
     BindNativeClass(FVM);
     gravity_class_win := nil;
     CreateOptWinClass(AIntf, FVM);
@@ -267,6 +276,7 @@ begin
   AIntf := GravityEng;
   with AIntf do
   begin
+    GravitySysUtilsFree;
     UnbindNativeClass(FVM);
     DestroyOptWinClass(AIntf, Fvm);
     gravity_vm_free(Fvm);

@@ -48,7 +48,7 @@ procedure BindNativeClass(AVm: Pgravity_vm);
 procedure UnbindNativeClass(AVm: Pgravity_vm);
 procedure RegisterGravityClass(AClass: TGravityWrapperBaseClass);
 procedure RegisterGravityClasses(AClasses: array of TGravityWrapperBaseClass);
-procedure RegisterGravityName(const AVarName: string);
+procedure RegisterGravityName(const AVarName: String);
 procedure UnRegisterGravityClass(AClass: TGravityWrapperBaseClass);
 procedure UnRegisterGravityClasses(AClasses: array of TGravityWrapperBaseClass);
 function FindNativeClass(const ClassName: string): TGravityWrapperBaseClass;
@@ -57,7 +57,7 @@ function GetGravityClass(const AClassName: string): Pgravity_class_t;
 procedure DefineNativeObject(AVm: Pgravity_vm; const AVarName: String;
   AObj: TGravityWrapperBase);
 
-procedure delphi_bridge_hash_iterate(hashtable: Pgravity_hash_t;
+procedure host_bridge_hash_iterate(hashtable: Pgravity_hash_t;
   key, value: gravity_value_t; data: pointer); cdecl;
 
 implementation
@@ -123,16 +123,17 @@ type
     ClassItem: TGravityClassItem;
   end;
 
-function delphi_bridge_initinstance(vm: Pgravity_vm; xdata: pointer;
+function host_bridge_initinstance(vm: Pgravity_vm; xdata: pointer;
   ctx: gravity_value_t; instance: Pgravity_instance_t; Args: Pgravity_value_t;
   NArgs: Int16): Boolean; cdecl;
 begin
   with GravityEng do
   begin
+    Result := True;
   end;
 end;
 
-procedure delphi_bridge_free_instance(vm: Pgravity_vm;
+procedure host_bridge_free_instance(vm: Pgravity_vm;
   instance: Pgravity_instance_t); cdecl;
 begin
   with GravityEng do
@@ -140,32 +141,64 @@ begin
   end;
 end;
 
-procedure delphi_bridge_free_closure(vm: Pgravity_vm;
-  closure: Pgravity_closure_t); cdecl;
+procedure host_bridge_free_var(bridge_var: Pointer); cdecl;
+begin
+  with GravityEng do
+  begin
+    FreeMem(bridge_var);
+  end;
+end;
+
+
+procedure host_bridge_free_func(bridge_var: Pointer); cdecl;
 var
   AFunc: PNativeFunctionRecord;
 begin
+  if Assigned(bridge_var) then
+  with GravityEng do
+  begin
+    AFunc := PNativeFunctionRecord(bridge_var);
+    FreeMem(AFunc^.FuncName, Length(AFunc^.FuncName) + 1);
+    FreeMem(AFunc, SizeOf(TNativeFunctionRecord));
+  end;
+end;
+
+procedure host_bridge_free_closure(vm: Pgravity_vm;
+  closure: Pgravity_closure_t; const is_property: Boolean); cdecl;
+var
+  AGetter, ASetter: Pgravity_closure_t;
+begin
+  if Assigned(closure) then  
   with GravityEng do
   begin
     if closure^.f^.tag = EXEC_TYPE_SPECIAL then
     begin
-
+      if closure^.f^.f10.f3.index <> GRAVITY_BRIDGE_INDEX then
+      begin
+        if Assigned(closure^.f^.xdata) then
+          host_bridge_free_var(closure^.f^.xdata);
+        closure^.f^.xdata := nil;
+        AGetter := closure^.f^.f10.f3.special[0];
+        ASetter := nil;
+        if (closure^.f^.f10.f3.special[0] <> closure^.f^.f10.f3.special[1]) then
+          ASetter := closure^.f^.f10.f3.special[1];
+        host_bridge_free_closure(vm, AGetter, True);
+        host_bridge_free_closure(vm, ASetter, True);
+      end;
     end
     else if closure^.f^.tag = EXEC_TYPE_BRIDGED then
-    begin
-
-    end;
+      if is_property then
+        host_bridge_free_var(closure^.f^.xdata)
+      else
+        host_bridge_free_func(closure^.f^.xdata);
     if closure^.f^.xdata <> nil then
-    begin
-      AFunc := PNativeFunctionRecord(closure^.f^.xdata);
-      FreeMem(AFunc^.FuncName, Length(AFunc^.FuncName) + 1);
-      FreeMem(AFunc, SizeOf(TNativeFunctionRecord));
-      closure^.f^.xdata := nil;
-    end;
+      host_bridge_free_var(closure^.f^.xdata);
+    gravity_function_free(nil, closure^.f);
+    gravity_closure_free(nil, closure);
   end;
 end;
 
-procedure delphi_bridge_free_class(vm: Pgravity_vm;
+procedure host_bridge_free_class(vm: Pgravity_vm;
   klass: Pgravity_class_t); cdecl;
 var
   AMeta: Pgravity_class_t;
@@ -174,25 +207,25 @@ begin
     with GravityEng do
     begin
       AMeta := gravity_class_get_meta(klass);
-      gravity_hash_iterate(AMeta^.htable, delphi_bridge_hash_iterate, vm);
-      gravity_hash_iterate(klass^.htable, delphi_bridge_hash_iterate, vm);
+      gravity_hash_iterate(AMeta^.htable, host_bridge_hash_iterate, vm);
+      gravity_hash_iterate(klass^.htable, host_bridge_hash_iterate, vm);
     end;
 end;
 
-procedure delphi_bridge_free(vm: Pgravity_vm; obj: Pgravity_object_t); cdecl;
+procedure host_bridge_free(vm: Pgravity_vm; obj: Pgravity_object_t); cdecl;
 begin
   with GravityEng do
   begin
     if OBJECT_ISA_INSTANCE(obj) then
-      delphi_bridge_free_instance(vm, Pgravity_instance_t(obj))
+      host_bridge_free_instance(vm, Pgravity_instance_t(obj))
     else if OBJECT_ISA_CLOSURE(obj) then
-      delphi_bridge_free_closure(vm, Pgravity_closure_t(obj))
+      host_bridge_free_closure(vm, Pgravity_closure_t(obj), False)
     else if OBJECT_ISA_CLASS(obj) then
-      delphi_bridge_free_class(vm, Pgravity_class_t(obj));
+      host_bridge_free_class(vm, Pgravity_class_t(obj));
   end;
 end;
 
-function delphi_bridge_execute(vm: Pgravity_vm; xdata: pointer;
+function host_bridge_execute(vm: Pgravity_vm; xdata: pointer;
   ctx: gravity_value_t; Args: Pgravity_value_t; NArgs: Int16; vindex: UInt32)
   : Boolean; cdecl;
 var
@@ -212,6 +245,7 @@ var
 begin
   with GravityEng do
   begin
+    Result := RETURN_NOVALUE;
     AFuncRec := PNativeFunctionRecord(xdata);
     if AFuncRec <> nil then
     begin
@@ -260,24 +294,30 @@ begin
                   end;
                 end;
               end;
-              ARetValue := LMethod.Invoke(AObj, AParams);
-              if not ARetValue.IsEmpty then
-              begin
-                if ARetValue.Kind = tkInteger then
-                  RETURN_VALUE(vm, VALUE_FROM_INT(ARetValue.AsInteger), vindex)
-                else if ARetValue.Kind = tkInt64 then
-                  RETURN_VALUE(vm, VALUE_FROM_INT(ARetValue.AsInt64), vindex)
-                else if ARetValue.Kind = tkFloat then
-                  RETURN_VALUE(vm,
-                    VALUE_FROM_FLOAT(ARetValue.AsExtended), vindex)
-                else if (ARetValue.Kind = tkString) or (ARetValue.Kind = tkChar)
-                  or (ARetValue.Kind = tkWString) or (ARetValue.Kind = tkWChar)
-                  or (ARetValue.Kind = tkUString) then
+              try
+                ARetValue := LMethod.Invoke(AObj, AParams);
+                if not ARetValue.IsEmpty then
                 begin
-                  AStr := AnsiString(ARetValue.AsString);
-                  RETURN_VALUE(vm, VALUE_FROM_STRING(vm, AStr,
-                    Length(AStr)), vindex)
+                  if ARetValue.Kind = tkInteger then
+                    Result := RETURN_VALUE(vm, VALUE_FROM_INT(ARetValue.AsInteger), vindex)
+                  else if ARetValue.Kind = tkInt64 then
+                    Result := RETURN_VALUE(vm, VALUE_FROM_INT(ARetValue.AsInt64), vindex)
+                  else if ARetValue.Kind = tkFloat then
+                    Result := RETURN_VALUE(vm,
+                      VALUE_FROM_FLOAT(ARetValue.AsExtended), vindex)
+                  else if (ARetValue.Kind = tkString) or (ARetValue.Kind = tkChar)
+                    or (ARetValue.Kind = tkWString) or (ARetValue.Kind = tkWChar)
+                    or (ARetValue.Kind = tkUString) then
+                  begin
+                    AStr := AnsiString(ARetValue.AsString);
+                    Result := RETURN_VALUE(vm, VALUE_FROM_STRING(vm, AStr), vindex)
+                  end;
                 end;
+              except
+                on E:Exception do
+                  begin
+                    Result := RETURN_ERROR(vm, AnsiString(E.Message), vindex);
+                  end;
               end;
             end;
           end;
@@ -289,87 +329,95 @@ begin
   end;
 end;
 
-function delphi_bridge_getvalue(vm: Pgravity_vm; xdata: pointer;
+function host_bridge_getvalue(vm: Pgravity_vm; xdata: pointer;
   target: gravity_value_t; const key: PAnsiChar; vindex: UInt32)
   : Boolean; cdecl;
 begin
   with GravityEng do
   begin
+    Result := False;
   end;
 end;
 
-function delphi_bridge_setvalue(vm: Pgravity_vm; xdata: pointer;
+function host_bridge_setvalue(vm: Pgravity_vm; xdata: pointer;
   target: gravity_value_t; const key: PAnsiChar; value: gravity_value_t)
   : Boolean; cdecl;
 begin
   with GravityEng do
   begin
+    Result := False;
   end;
 end;
 
-function delphi_bridge_getundef(vm: Pgravity_vm; xdata: pointer;
+function host_bridge_getundef(vm: Pgravity_vm; xdata: pointer;
   target: gravity_value_t; const key: PAnsiChar; vindex: UInt32)
   : Boolean; cdecl;
 begin
   with GravityEng do
   begin
+    Result := False;
   end;
 end;
 
-function delphi_bridge_setundef(vm: Pgravity_vm; xdata: pointer;
+function host_bridge_setundef(vm: Pgravity_vm; xdata: pointer;
   target: gravity_value_t; const key: PAnsiChar; value: gravity_value_t)
   : Boolean; cdecl;
 begin
   with GravityEng do
   begin
+    Result := False;
   end;
 end;
 
-function delphi_bridge_clone(vm: Pgravity_vm; xdata: pointer): pointer; cdecl;
+function host_bridge_clone(vm: Pgravity_vm; xdata: pointer): pointer; cdecl;
 begin
   with GravityEng do
   begin
+    Result := nil;
   end;
 end;
 
-function delphi_bridge_equals(vm: Pgravity_vm; obj1: pointer; obj2: pointer)
+function host_bridge_equals(vm: Pgravity_vm; obj1: pointer; obj2: pointer)
   : Boolean; cdecl;
 begin
   with GravityEng do
   begin
+    Result := false;
   end;
 end;
 
-function delphi_bridge_size(vm: Pgravity_vm; obj: Pgravity_object_t)
+function host_bridge_size(vm: Pgravity_vm; obj: Pgravity_object_t)
   : UInt32; cdecl;
 begin
   with GravityEng do
   begin
+    Result := 0;
   end;
 end;
 
-function delphi_bridge_string(vm: Pgravity_vm; xdata: pointer; len: PUInt32)
+function host_bridge_string(vm: Pgravity_vm; xdata: pointer; len: PUInt32)
   : PAnsiChar; cdecl;
 begin
   with GravityEng do
   begin
+    Result := nil;
   end;
 end;
 
-procedure delphi_bridge_blacken(vm: Pgravity_vm; xdata: pointer); cdecl;
+procedure host_bridge_blacken(vm: Pgravity_vm; xdata: pointer); cdecl;
 begin
   with GravityEng do
   begin
   end;
 end;
 
-procedure delphi_bridge_hash_iterate(hashtable: Pgravity_hash_t;
+procedure host_bridge_hash_iterate(hashtable: Pgravity_hash_t;
   key, value: gravity_value_t; data: pointer);
 begin
   with GravityEng do
   begin
     if gravity_value_isobject(value) then
-      delphi_bridge_free(data, VALUE_AS_OBJECT(value));
+      host_bridge_free(data, VALUE_AS_OBJECT(value));
   end;
 end;
 
@@ -387,8 +435,6 @@ begin
 end;
 
 procedure TAnsiStrings.Clear;
-var
-  I: Integer;
 begin
   if FCount <> 0 then
   begin
@@ -422,8 +468,6 @@ begin
 end;
 
 destructor TAnsiStrings.Destroy;
-var
-  I: Integer;
 begin
   inherited Destroy;
   FCount := 0;
@@ -576,18 +620,18 @@ begin
   begin
     ADlgt := gravity_vm_delegate(vm);
     ADlgt^.optional_classes := native_classes_callback;
-    ADlgt^.bridge_initinstance := delphi_bridge_initinstance;
-    ADlgt^.bridge_getvalue := delphi_bridge_getvalue;
-    ADlgt^.bridge_setvalue := delphi_bridge_setvalue;
-    ADlgt^.bridge_getundef := delphi_bridge_getundef;
-    ADlgt^.bridge_setundef := delphi_bridge_setundef;
-    ADlgt^.bridge_execute := delphi_bridge_execute;
-    ADlgt^.bridge_blacken := delphi_bridge_blacken;
-    ADlgt^.bridge_string := delphi_bridge_string;
-    ADlgt^.bridge_equals := delphi_bridge_equals;
-    ADlgt^.bridge_clone := delphi_bridge_clone;
-    ADlgt^.bridge_size := delphi_bridge_size;
-    ADlgt^.bridge_free := delphi_bridge_free;
+    ADlgt^.bridge_initinstance := host_bridge_initinstance;
+    ADlgt^.bridge_getvalue := host_bridge_getvalue;
+    ADlgt^.bridge_setvalue := host_bridge_setvalue;
+    ADlgt^.bridge_getundef := host_bridge_getundef;
+    ADlgt^.bridge_setundef := host_bridge_setundef;
+    ADlgt^.bridge_execute := host_bridge_execute;
+    ADlgt^.bridge_blacken := host_bridge_blacken;
+    ADlgt^.bridge_string := host_bridge_string;
+    ADlgt^.bridge_equals := host_bridge_equals;
+    ADlgt^.bridge_clone := host_bridge_clone;
+    ADlgt^.bridge_size := host_bridge_size;
+    ADlgt^.bridge_free := host_bridge_free;
   end;
 end;
 
@@ -632,9 +676,6 @@ var
 
   procedure InternalRegisterMethod(AKlass: Pgravity_class_t);
   var
-    AFunc: gravity_c_internal;
-    AClosure: Pgravity_closure_t;
-    AValue: Pgravity_value_t;
     AFuncRec: PNativeFunctionRecord;
   begin
     with GravityEng do
@@ -746,9 +787,9 @@ begin
   with GravityEng do
   begin
     AMeta := gravity_class_get_meta(FGravityClass);
-    gravity_hash_iterate(AMeta^.htable, delphi_bridge_hash_iterate, vm);
+    gravity_hash_iterate(AMeta^.htable, host_bridge_hash_iterate, vm);
     gravity_hash_iterate(FGravityClass^.htable,
-      delphi_bridge_hash_iterate, vm);
+      host_bridge_hash_iterate, vm);
   end;
 end;
 
@@ -817,7 +858,6 @@ end;
 function TGravityClassReg.GetClass(const AClassName: string)
   : TGravityWrapperBaseClass;
 var
-  I: Integer;
   AItem: pointer;
 begin
   for AItem in FWrapperList do
@@ -845,7 +885,6 @@ end;
 function TGravityClassReg.GetGravityClass(const AClassName: string)
   : Pgravity_class_t;
 var
-  I: Integer;
   AItem: pointer;
 begin
   for AItem in FWrapperList do
@@ -914,7 +953,6 @@ end;
 function TGravityClassRegs.FindGroup(AClass: TGravityWrapperBaseClass)
   : TGravityClassReg;
 var
-  I: Integer;
   AItem: pointer;
 begin
   Result := nil;
@@ -957,7 +995,7 @@ end;
 
 function TGravityClassRegs.GetName(I: Integer): string;
 begin
-  Result := FNameList[I];
+  Result := String(FNameList[I]);
 end;
 
 procedure TGravityClassRegs.Lock;
@@ -1006,7 +1044,7 @@ var
 begin
   for I := 0 to FWrapperGroups.Count - 1 do
     TGravityClassReg(FWrapperGroups[I]).UnregisterClass(AClass);
-  I := FNameList.IndexOf(AClass.ClassName);
+  I := FNameList.IndexOf(AnsiString(AClass.ClassName));
   if I >= 0 then
     FNameList.Delete(I);
 end;
@@ -1131,7 +1169,7 @@ begin
   end;
 end;
 
-procedure RegisterGravityName(const AVarName: string);
+procedure RegisterGravityName(const AVarName: String);
 begin
   GravityRegGroups.Lock;
   try
@@ -1199,18 +1237,14 @@ begin
               AParams[I] := VALUE_FROM_FLOAT(AVarRec.VCurrency^);
             vtString:
               AParams[I] := VALUE_FROM_STRING(AVm,
-                PAnsiString(AVarRec.VAnsiString)^,
-                Length(PAnsiString(AVarRec.VAnsiString)^));
+                PAnsiString(AVarRec.VAnsiString)^);
             vtChar:
-              AParams[I] := VALUE_FROM_STRING(AVm, AVarRec.VChar,
-                Length(AVarRec.VChar));
+              AParams[I] := VALUE_FROM_STRING(AVm, AVarRec.VChar);
             vtWideChar:
-              AParams[I] := VALUE_FROM_STRING(AVm, AVarRec.VWideChar,
-                Length(AVarRec.VWideChar));
+              AParams[I] := VALUE_FROM_STRING(AVm, AnsiString(String(AVarRec.VWideChar)));
             vtWideString:
               AParams[I] := VALUE_FROM_STRING(AVm,
-                WideString(AVarRec.VWideString),
-                Length(WideString(AVarRec.VWideString)));
+                AnsiString(String(WideString(AVarRec.VWideString))));
           end;
         end;
       end;

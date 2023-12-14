@@ -10,10 +10,6 @@ procedure GravitySysUtilsRegister(vm: Pgravity_vm);
 procedure GravitySysUtilsFree;
 
 
-function convert_value2DateTime(vm: Pgravity_vm; v: gravity_value_t): gravity_value_t;
-function convert_value2Date(vm: Pgravity_vm; v: gravity_value_t): gravity_value_t;
-function convert_value2Time(vm: Pgravity_vm; v: gravity_value_t): gravity_value_t;
-
 implementation
 uses
   System.AnsiStrings;
@@ -21,393 +17,563 @@ uses
 var
   GravitySysUtilsClass: Pgravity_class_t;
 
-  GravityDateTimeClass: Pgravity_class_t;
-  GravityTimeClass: Pgravity_class_t;
-  GravityDateClass: Pgravity_class_t;
-
   reff_count: integer = 0;
   sysutils_initialized: boolean = False;
 
 
 const
   GravitySysUtilsClassName: AnsiString = 'SysUtils';
-  GravityDateTimeClassName: AnsiString = 'TDateTime';
-  GravityDateClassName: AnsiString = 'TDate';
-  GravityTimeClassName: AnsiString = 'TTime';
 
 
-function VALUE_ISA_DATETIME(v: gravity_value_t): Boolean;
-begin
-  result := v.isa = GravityDateTimeClass;
-end;
-
-function VALUE_ISA_DATE(v: gravity_value_t): Boolean;
-begin
-  result := v.isa = GravityDateClass;
-end;
-
-function VALUE_ISA_TIME(v: gravity_value_t): Boolean;
-begin
-  result := v.isa = GravityTimeClass;
-end;
-
-function VALUE_FROM_DATETIME(v: TDateTime): gravity_value_t;
-begin
-  Result.isa := GravityDateTimeClass;
-  Result.f2.f := v;
-end;
-
-function VALUE_FROM_DATE(v: TDateTime): gravity_value_t;
-begin
-  Result.isa := GravityDateClass;
-  Result.f2.f := v;
-end;
-
-function VALUE_FROM_TIME(v: TDateTime): gravity_value_t;
-begin
-  Result.isa := GravityTimeClass;
-  Result.f2.f := v;
-end;
-
-function convert_object_datetime(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
-var
-  AVal: gravity_value_t;
-begin
-  with GravityEng do
-  begin
-    AVal := convert_value2DateTime(vm, GET_VALUE(args, 0));
-    if VALUE_ISA_NOTVALID(AVal) then
-    begin
-      gravity_fiber_seterror(gravity_vm_fiber(vm), PAnsiChar(AnsiString('Unable to convert object to DateTime')));
-      gravity_vm_setslot(vm, VALUE_FROM_NULL, rindex);
-      Result := False
-    end else
-    begin
-      gravity_vm_setslot(vm, AVal, rindex);
-      Result := True;
-    end;
-  end;
-end;
-
-function convert_object_date(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
-var
-  AVal: gravity_value_t;
-begin
-  with GravityEng do
-  begin
-    AVal := convert_value2Date(vm, GET_VALUE(args, 0));
-    if VALUE_ISA_NOTVALID(AVal) then
-    begin
-      gravity_fiber_seterror(gravity_vm_fiber(vm), PAnsiChar(AnsiString('Unable to convert object to Date')));
-      gravity_vm_setslot(vm, VALUE_FROM_NULL, rindex);
-      Result := False
-    end else
-    begin
-      gravity_vm_setslot(vm, AVal, rindex);
-      Result := True;
-    end;
-  end;
-end;
-
-function convert_object_time(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
-var
-  AVal: gravity_value_t;
-begin
-  with GravityEng do
-  begin
-    AVal := convert_value2Time(vm, GET_VALUE(args, 0));
-    if VALUE_ISA_NOTVALID(AVal) then
-    begin
-      gravity_fiber_seterror(gravity_vm_fiber(vm), PAnsiChar(AnsiString('Unable to convert object to Time')));
-      gravity_vm_setslot(vm, VALUE_FROM_NULL, rindex);
-      Result := False
-    end else
-    begin
-      gravity_vm_setslot(vm, AVal, rindex);
-      Result := True;
-    end;
-  end;
-end;
-
-function convert_value2DateTime(vm: Pgravity_vm; v: gravity_value_t): gravity_value_t;
-var
-  AClosure: Pgravity_closure_t;
-begin
-  with GravityEng do
-  begin
-    if VALUE_ISA_DATETIME(v) then
-      Result := v
-    else if VALUE_ISA_DATE(v) then
-      Result := VALUE_FROM_DATE(v.f2.f)
-    else if VALUE_ISA_TIME(v) then
-      Result := VALUE_FROM_DATE(v.f2.f)
-    else if VALUE_ISA_FLOAT(v) then
-      Result := VALUE_FROM_DATETIME(v.f2.f)
-    else if VALUE_ISA_INT(v) then
-      Result := VALUE_FROM_DATETIME(v.f2.n)
-    else if VALUE_ISA_NULL(v) then
-      Result := VALUE_FROM_DATETIME(0)
-    else if VALUE_ISA_UNDEFINED(v) then
-      Result := VALUE_FROM_DATETIME(0)
-    else if VALUE_ISA_STRING(v) then
-      Result := convert_value2float(vm, v);
-
-    AClosure := gravity_class_lookup_closure(gravity_value_getclass(v),
-      VALUE_FROM_STRING(vm, GravityDateTimeClassName, Length(GravityDateTimeClassName)));
-    if (AClosure = nil) or ((AClosure^.f^.tag = EXEC_TYPE_INTERNAL) and (@AClosure^.f^.f10.internal = @convert_object_datetime)) then
-    begin
-      Result := VALUE_FROM_ERROR(nil);
-      exit;
-    end;
-    if gravity_vm_runclosure(vm, AClosure, v, nil, 0) then
-    begin
-      Result := gravity_vm_result(vm);
-      exit;
-    end;
-    Result := VALUE_FROM_ERROR(nil);
-  end;
-end;
-
-function convert_value2Date(vm: Pgravity_vm; v: gravity_value_t): gravity_value_t;
-var
-  AClosure: Pgravity_closure_t;
-begin
-  with GravityEng do
-  begin
-    if VALUE_ISA_DATE(v) then
-      Result := v
-    else if VALUE_ISA_DATETIME(v) then
-      Result := VALUE_FROM_DATE(v.f2.f)
-    else if VALUE_ISA_TIME(v) then
-      Result := VALUE_FROM_DATE(v.f2.f)
-    else if VALUE_ISA_FLOAT(v) then
-      Result := VALUE_FROM_DATE(v.f2.f)
-    else if VALUE_ISA_INT(v) then
-      Result := VALUE_FROM_DATE(v.f2.n)
-    else if VALUE_ISA_NULL(v) then
-      Result := VALUE_FROM_DATE(0)
-    else if VALUE_ISA_UNDEFINED(v) then
-      Result := VALUE_FROM_DATE(0)
-    else if VALUE_ISA_STRING(v) then
-      Result := convert_value2float(vm, v);
-
-    AClosure := gravity_class_lookup_closure(gravity_value_getclass(v),
-      VALUE_FROM_STRING(vm, GravityDateClassName, Length(GravityDateClassName)));
-    if (AClosure = nil) or ((AClosure^.f^.tag = EXEC_TYPE_INTERNAL) and (@AClosure^.f^.f10.internal = @convert_object_date)) then
-    begin
-      Result := VALUE_FROM_ERROR(nil);
-      exit;
-    end;
-    if gravity_vm_runclosure(vm, AClosure, v, nil, 0) then
-    begin
-      Result := gravity_vm_result(vm);
-      exit;
-    end;
-    Result := VALUE_FROM_ERROR(nil);
-  end;
-end;
-
-function convert_value2Time(vm: Pgravity_vm; v: gravity_value_t): gravity_value_t;
-var
-  AClosure: Pgravity_closure_t;
-begin
-  with GravityEng do
-  begin
-    if VALUE_ISA_TIME(v) then
-      Result := v
-    else if VALUE_ISA_DATE(v) then
-      Result := VALUE_FROM_DATE(v.f2.f)
-    else if VALUE_ISA_DATETIME(v) then
-      Result := VALUE_FROM_DATE(v.f2.f)
-    else if VALUE_ISA_FLOAT(v) then
-      Result := VALUE_FROM_TIME(v.f2.f)
-    else if VALUE_ISA_INT(v) then
-      Result := VALUE_FROM_TIME(v.f2.n)
-    else if VALUE_ISA_NULL(v) then
-      Result := VALUE_FROM_TIME(0)
-    else if VALUE_ISA_UNDEFINED(v) then
-      Result := VALUE_FROM_TIME(0)
-    else if VALUE_ISA_STRING(v) then
-      Result := convert_value2float(vm, v);
-
-    AClosure := gravity_class_lookup_closure(gravity_value_getclass(v),
-      VALUE_FROM_STRING(vm, GravityTimeClassName, Length(GravityTimeClassName)));
-    if (AClosure = nil) or ((AClosure^.f^.tag = EXEC_TYPE_INTERNAL) and (@AClosure^.f^.f10.internal = @convert_object_time)) then
-    begin
-      Result := VALUE_FROM_ERROR(nil);
-      exit;
-    end;
-    if gravity_vm_runclosure(vm, AClosure, v, nil, 0) then
-    begin
-      Result := gravity_vm_result(vm);
-      exit;
-    end;
-    Result := VALUE_FROM_ERROR(nil);
-  end;
-end;
-
-function gravity_tdatetime_exec(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
-var
-  AVal : gravity_value_t;
-  ABuf: AnsiString;
-begin
-  with GravityEng do
-  begin
-    if nargs <> 2 then
-    begin
-      gravity_fiber_seterror(gravity_vm_fiber(vm), PAnsiChar(AnsiString('A single argument is expected in DateTime casting.')));
-      gravity_vm_setslot(vm, VALUE_FROM_NULL, rindex);
-      Result := False
-    end;
-    AVal := convert_value2DateTime(vm, GET_VALUE(args, 1));
-    if (VALUE_ISA_NOTVALID(AVal)) then
-    begin
-      gravity_fiber_seterror(gravity_vm_fiber(vm), PAnsiChar(AnsiString('Unable to convert object to DateTime')));
-      gravity_vm_setslot(vm, VALUE_FROM_NULL, rindex);
-      Result := False
-    end else
-    begin
-      gravity_vm_setslot(vm, AVal, rindex);
-      Result := True;
-    end;
-  end;
-end;
-
-function gravity_tdate_exec(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
-var
-  AVal : gravity_value_t;
-  ABuf: AnsiString;
-begin
-  with GravityEng do
-  begin
-    if nargs <> 2 then
-    begin
-      gravity_fiber_seterror(gravity_vm_fiber(vm), PAnsiChar(AnsiString('A single argument is expected in Date casting.')));
-      gravity_vm_setslot(vm, VALUE_FROM_NULL, rindex);
-      Result := False
-    end;
-    AVal := convert_value2Date(vm, GET_VALUE(args, 1));
-    if (VALUE_ISA_NOTVALID(AVal)) then
-    begin
-      gravity_fiber_seterror(gravity_vm_fiber(vm), PAnsiChar(AnsiString('Unable to convert object to Date')));
-      gravity_vm_setslot(vm, VALUE_FROM_NULL, rindex);
-      Result := False
-    end else
-    begin
-      gravity_vm_setslot(vm, AVal, rindex);
-      Result := True;
-    end;
-  end;
-end;
-
-function gravity_ttime_exec(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
-var
-  AVal : gravity_value_t;
-  ABuf: AnsiString;
-begin
-  with GravityEng do
-  begin
-    if nargs <> 2 then
-    begin
-      gravity_fiber_seterror(gravity_vm_fiber(vm), PAnsiChar(AnsiString('A single argument is expected in Time casting.')));
-      gravity_vm_setslot(vm, VALUE_FROM_NULL, rindex);
-      Result := False
-    end;
-    AVal := convert_value2Time(vm, GET_VALUE(args, 1));
-    if (VALUE_ISA_NOTVALID(AVal)) then
-    begin
-      gravity_fiber_seterror(gravity_vm_fiber(vm), PAnsiChar(AnsiString('Unable to convert object to Time')));
-      gravity_vm_setslot(vm, VALUE_FROM_NULL, rindex);
-      Result := False
-    end else
-    begin
-      gravity_vm_setslot(vm, AVal, rindex);
-      Result := True;
-    end;
-  end;
-end;
 
 function gravity_date(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AVal: gravity_value_t;
 begin
   with GravityEng do
-    Result := True;
+  try
+    AVal := VALUE_FROM_FLOAT(Date);
+    if (VALUE_ISA_NOTVALID(AVal)) then
+      Result := RETURN_NOVALUE
+    else
+      Result := RETURN_VALUE(vm, AVal, rindex);
+  except
+    on E:Exception do
+      begin
+        Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+      end;
+  end;
+end;
+
+function gravity_curryear(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AVal: gravity_value_t;
+begin
+  with GravityEng do
+  try
+    AVal := VALUE_FROM_INT(CurrentYear);
+    if (VALUE_ISA_NOTVALID(AVal)) then
+      Result := RETURN_NOVALUE
+    else
+      Result := RETURN_VALUE(vm, AVal, rindex);
+  except
+    on E:Exception do
+      begin
+        Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+      end;
+  end;
 end;
 
 function gravity_time(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AVal: gravity_value_t;
 begin
   with GravityEng do
-    Result := True;
+  try
+    AVal := VALUE_FROM_FLOAT(Time);
+    if (VALUE_ISA_NOTVALID(AVal)) then
+      Result := RETURN_NOVALUE
+    else
+      Result := RETURN_VALUE(vm, AVal, rindex);
+  except
+    on E:Exception do
+      begin
+        Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+      end;
+  end;
 end;
 
 function gravity_now(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AVal: gravity_value_t;
 begin
   with GravityEng do
-    Result := True;
+  try
+    AVal := VALUE_FROM_FLOAT(Now);
+    if (VALUE_ISA_NOTVALID(AVal)) then
+      Result := RETURN_NOVALUE
+    else
+      Result := RETURN_VALUE(vm, AVal, rindex);
+  except
+    on E:Exception do
+      begin
+        Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+      end;
+  end;
+end;
+
+function gravity_replacedate(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  ADate_1, ADate_2: TDateTime;
+  AVal: gravity_value_t;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 4) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      ADate_1 := VALUE_AS_FLOAT(GET_VALUE(args, 1));
+      ADate_2 := VALUE_AS_FLOAT(GET_VALUE(args, 1));
+      ReplaceDate(ADate_1, ADate_2);
+      AVal := VALUE_FROM_FLOAT(ADate_1);
+      if (VALUE_ISA_NOTVALID(AVal)) then
+        Result := RETURN_NOVALUE
+      else
+        Result := RETURN_VALUE(vm, AVal, rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
+end;
+
+function gravity_replacetime(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  ADate_1, ADate_2: TDateTime;
+  AVal: gravity_value_t;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 4) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      ADate_1 := VALUE_AS_FLOAT(GET_VALUE(args, 1));
+      ADate_2 := VALUE_AS_FLOAT(GET_VALUE(args, 1));
+      ReplaceTime(ADate_1, ADate_2);
+      AVal := VALUE_FROM_FLOAT(ADate_1);
+      if (VALUE_ISA_NOTVALID(AVal)) then
+        Result := RETURN_NOVALUE
+      else
+        Result := RETURN_VALUE(vm, AVal, rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
 end;
 
 function gravity_encodedate(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AVal: gravity_value_t;
 begin
   with GravityEng do
-    Result := True;
+  begin
+    if (nargs <> 4) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      AVal := VALUE_FROM_FLOAT(
+          EncodeDate(
+            VALUE_AS_INT(GET_VALUE(args, 1)),
+            VALUE_AS_INT(GET_VALUE(args, 2)),
+            VALUE_AS_INT(GET_VALUE(args, 3))
+          )
+        );
+      if (VALUE_ISA_NOTVALID(AVal)) then
+        Result := RETURN_NOVALUE
+      else
+        Result := RETURN_VALUE(vm, AVal, rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
 end;
 
 function gravity_encodetime(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AVal: gravity_value_t;
 begin
   with GravityEng do
-    Result := True;
+  begin
+    if (nargs <> 5) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      AVal := VALUE_FROM_FLOAT(
+          EncodeTime(
+            VALUE_AS_INT(GET_VALUE(args, 1)),
+            VALUE_AS_INT(GET_VALUE(args, 2)),
+            VALUE_AS_INT(GET_VALUE(args, 3)),
+            VALUE_AS_INT(GET_VALUE(args, 4))
+          )
+        );
+      if (VALUE_ISA_NOTVALID(AVal)) then
+        Result := RETURN_NOVALUE
+      else
+        Result := RETURN_VALUE(vm, AVal, rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
 end;
 
-function gravity_decodedate(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+function gravity_encodedatetime(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AVal: gravity_value_t;
 begin
   with GravityEng do
-    Result := True;
+  begin
+    if (nargs <> 8) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      AVal := VALUE_FROM_FLOAT(
+          EncodeDate(
+            VALUE_AS_INT(GET_VALUE(args, 1)),
+            VALUE_AS_INT(GET_VALUE(args, 2)),
+            VALUE_AS_INT(GET_VALUE(args, 3))
+          ) +
+          EncodeTime(
+            VALUE_AS_INT(GET_VALUE(args, 4)),
+            VALUE_AS_INT(GET_VALUE(args, 5)),
+            VALUE_AS_INT(GET_VALUE(args, 6)),
+            VALUE_AS_INT(GET_VALUE(args, 7))
+          )
+        );
+      if (VALUE_ISA_NOTVALID(AVal)) then
+        Result := RETURN_NOVALUE
+      else
+        Result := RETURN_VALUE(vm, AVal, rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
 end;
 
-function gravity_decodetime(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+function gravity_yearof(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AYear, AMonth, ADay: Word;
 begin
   with GravityEng do
-    Result := True;
+  begin
+    if (nargs <> 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      DecodeDate(VALUE_AS_FLOAT(GET_VALUE(args, 1)), AYear, AMonth, ADay);
+      Result := RETURN_VALUE(vm, VALUE_FROM_INT(AYear), rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
 end;
 
+function gravity_monthof(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AYear, AMonth, ADay: Word;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      DecodeDate(VALUE_AS_FLOAT(GET_VALUE(args, 1)), AYear, AMonth, ADay);
+      Result := RETURN_VALUE(vm, VALUE_FROM_INT(AMonth), rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
+end;
+
+function gravity_dayof(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AYear, AMonth, ADay: Word;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      DecodeDate(VALUE_AS_FLOAT(GET_VALUE(args, 1)), AYear, AMonth, ADay);
+      Result := RETURN_VALUE(vm, VALUE_FROM_INT(ADay), rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
+end;
+
+function gravity_hourof(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AHour, AMin, ASec, AMsec: Word;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      DecodeTime(VALUE_AS_FLOAT(GET_VALUE(args, 1)), AHour, AMin, ASec, AMsec);
+      Result := RETURN_VALUE(vm, VALUE_FROM_INT(AHour), rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
+end;
+
+function gravity_minof(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AHour, AMin, ASec, AMsec: Word;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      DecodeTime(VALUE_AS_FLOAT(GET_VALUE(args, 1)), AHour, AMin, ASec, AMsec);
+      Result := RETURN_VALUE(vm, VALUE_FROM_INT(AMin), rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
+end;
+
+function gravity_secof(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AHour, AMin, ASec, AMsec: Word;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try
+      DecodeTime(VALUE_AS_FLOAT(GET_VALUE(args, 1)), AHour, AMin, ASec, AMsec);
+      Result := RETURN_VALUE(vm, VALUE_FROM_INT(ASec), rindex);
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
+end;
+
+function gravity_msecof(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AHour, AMin, ASec, AMsec: Word;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    try      
+      DecodeTime(VALUE_AS_FLOAT(GET_VALUE(args, 1)), AHour, AMin, ASec, AMsec);
+      Result := RETURN_VALUE(vm, VALUE_FROM_INT(AMsec), rindex);  
+    except
+      on E:Exception do
+        begin
+          Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+        end;
+    end;
+  end;
+end;
+
+function gravity_incmonth(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AMonth: integer;
+begin
+  with GravityEng do
+  begin
+    if (nargs < 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    begin
+      AMonth := 1;
+      if nargs > 2 then
+        AMonth := VALUE_AS_INT(GET_VALUE(args, 2));
+      try
+        Result := RETURN_VALUE(vm, VALUE_FROM_FLOAT(
+            IncMonth(VALUE_AS_FLOAT(GET_VALUE(args, 1)), AMonth)
+          ), rindex);
+      except
+        on E:Exception do
+          begin
+            Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+          end;
+      end;
+    end;
+  end;
+end;
+
+function gravity_strtodatetime(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    begin
+      try
+        Result := RETURN_VALUE(vm, VALUE_FROM_FLOAT(
+            StrToDateTime(String(AnsiString(VALUE_AS_CSTRING(GET_VALUE(args, 1)))))
+          ), rindex);
+      except
+        on E:Exception do
+          begin
+            Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+          end;
+      end;
+    end;
+  end;
+end;
+
+function gravity_strtodate(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    begin
+      try
+        Result := RETURN_VALUE(vm, VALUE_FROM_FLOAT(
+            StrToDate(String(AnsiString(VALUE_AS_CSTRING(GET_VALUE(args, 1)))))
+          ), rindex);
+      except
+        on E:Exception do
+          begin
+            Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+          end;
+      end;
+    end;
+  end;
+end;
+
+function gravity_strtotime(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 2) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    begin
+      try
+        Result := RETURN_VALUE(vm, VALUE_FROM_FLOAT(
+            StrToTime(String(AnsiString(VALUE_AS_CSTRING(GET_VALUE(args, 1)))))
+          ), rindex);
+      except
+        on E:Exception do
+          begin
+            Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+          end;
+      end;
+    end;
+  end;
+end;
+
+function gravity_formatdatetime(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+begin
+  with GravityEng do
+  begin
+    if (nargs <> 3) then
+      Result := RETURN_ERROR(vm, 'Incorrect number of arguments.', rindex)
+    else
+    begin
+      try
+        Result := RETURN_VALUE(vm, VALUE_FROM_STRING(vm,
+          AnsiString(FormatDateTime(
+            String(AnsiString(VALUE_AS_CSTRING(GET_VALUE(args, 1)))),
+            VALUE_AS_FLOAT(GET_VALUE(args, 2))))), rindex);
+      except
+        on E:Exception do
+          begin
+            Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+          end;
+      end;
+    end;
+  end;
+end;
+
+function gravity_createguid(vm: Pgravity_vm; args: Pgravity_value_t; nargs: UInt16; rindex: UInt32): Boolean; cdecl;
+var
+  AGuid: TGUID;
+begin
+  with GravityEng do
+  try
+    CreateGUID(AGuid);
+    Result := RETURN_VALUE(vm, VALUE_FROM_STRING(vm,
+      AnsiString(GUIDToString(AGuid))), rindex);
+  except
+    on E:Exception do
+      begin
+        Result := RETURN_ERROR(vm, AnsiString(E.Message), rindex);
+      end;
+  end;
+end;
 
 procedure GravitySysUtilsInit;
 var
-  AParentClass, AMeta: Pgravity_class_t;
+  AMeta: Pgravity_class_t;
 begin
   if sysutils_initialized then
     exit;
   sysutils_initialized := True;
   with GravityEng do
   begin
-    AParentClass := gravity_class_float;
     GravitySysUtilsClass := gravity_class_new_pair(nil, GravitySysUtilsClassName, nil, 0, 0);
-
-    GravityDateTimeClass := gravity_class_new_pair(nil, GravityDateTimeClassName, AParentClass, 0, 0);
-    AMeta := gravity_class_get_meta(GravityDateTimeClass);
-    gravity_class_bind(AMeta, GRAVITY_INTERNAL_EXEC_NAME, NEW_CLOSURE_VALUE(gravity_tdatetime_exec));
-
-    GravityDateClass := gravity_class_new_pair(nil, GravityDateClassName, GravityDateTimeClass, 0, 0);
-    AMeta := gravity_class_get_meta(GravityDateClass);
-    gravity_class_bind(AMeta, GRAVITY_INTERNAL_EXEC_NAME, NEW_CLOSURE_VALUE(gravity_tdate_exec));
-
-    GravityTimeClass := gravity_class_new_pair(nil, GravityTimeClassName, GravityDateTimeClass, 0, 0);
-    AMeta := gravity_class_get_meta(GravityTimeClass);
-    gravity_class_bind(AMeta, GRAVITY_INTERNAL_EXEC_NAME, NEW_CLOSURE_VALUE(gravity_ttime_exec));
-
     AMeta := gravity_class_get_meta(GravitySysUtilsClass);
-    gravity_class_bind(AMeta, 'Date', NEW_CLOSURE_VALUE(gravity_date));
-    gravity_class_bind(AMeta, 'Time', NEW_CLOSURE_VALUE(gravity_time));
-    gravity_class_bind(AMeta, 'Now', NEW_CLOSURE_VALUE(gravity_now));
-    gravity_class_bind(AMeta, 'EncodeDate', NEW_CLOSURE_VALUE(gravity_encodedate));
-    gravity_class_bind(AMeta, 'EncodeTime', NEW_CLOSURE_VALUE(gravity_encodetime));
-    gravity_class_bind(AMeta, 'DecodeDate', NEW_CLOSURE_VALUE(gravity_decodedate));
-    gravity_class_bind(AMeta, 'DecodeTime', NEW_CLOSURE_VALUE(gravity_decodetime));
+    gravity_class_bind(AMeta, 'date', NEW_CLOSURE_VALUE(gravity_date));
+    gravity_class_bind(AMeta, 'time', NEW_CLOSURE_VALUE(gravity_time));
+    gravity_class_bind(AMeta, 'today', NEW_CLOSURE_VALUE(gravity_date));
+    gravity_class_bind(AMeta, 'now', NEW_CLOSURE_VALUE(gravity_now));
+    gravity_class_bind(AMeta, 'yearof', NEW_CLOSURE_VALUE(gravity_yearof));
+    gravity_class_bind(AMeta, 'monthof', NEW_CLOSURE_VALUE(gravity_monthof));
+    gravity_class_bind(AMeta, 'dayof', NEW_CLOSURE_VALUE(gravity_dayof));
+    gravity_class_bind(AMeta, 'hourof', NEW_CLOSURE_VALUE(gravity_hourof));
+    gravity_class_bind(AMeta, 'minof', NEW_CLOSURE_VALUE(gravity_minof));
+    gravity_class_bind(AMeta, 'secof', NEW_CLOSURE_VALUE(gravity_secof));
+    gravity_class_bind(AMeta, 'msecof', NEW_CLOSURE_VALUE(gravity_msecof));
+    gravity_class_bind(AMeta, 'encodedate', NEW_CLOSURE_VALUE(gravity_encodedate));
+    gravity_class_bind(AMeta, 'encodetime', NEW_CLOSURE_VALUE(gravity_encodetime));
+    gravity_class_bind(AMeta, 'encodedatetime', NEW_CLOSURE_VALUE(gravity_encodedatetime));
+    gravity_class_bind(AMeta, 'incmonth', NEW_CLOSURE_VALUE(gravity_incmonth));
+    gravity_class_bind(AMeta, 'currentyear', NEW_CLOSURE_VALUE(gravity_curryear));
+    gravity_class_bind(AMeta, 'replacedate', NEW_CLOSURE_VALUE(gravity_replacedate));
+    gravity_class_bind(AMeta, 'replacetime', NEW_CLOSURE_VALUE(gravity_replacetime));
+    gravity_class_bind(AMeta, 'strtodate', NEW_CLOSURE_VALUE(gravity_strtodate));
+    gravity_class_bind(AMeta, 'strtotime', NEW_CLOSURE_VALUE(gravity_strtotime));
+    gravity_class_bind(AMeta, 'strtodatetime', NEW_CLOSURE_VALUE(gravity_strtodatetime));
+    gravity_class_bind(AMeta, 'formatdatetime', NEW_CLOSURE_VALUE(gravity_formatdatetime));
+
+    gravity_class_bind(AMeta, 'createguid', NEW_CLOSURE_VALUE(gravity_createguid));
+
     SETMETA_INITED(GravitySysUtilsClass);
 
-    RegisterGravityName(GravitySysUtilsClassName);
-    RegisterGravityName(GravityDateTimeClassName);
-    RegisterGravityName(GravityDateClassName);
-    RegisterGravityName(GravityTimeClassName);
+    RegisterGravityName(String(GravitySysUtilsClassName));
   end;
 end;
 
@@ -421,9 +587,6 @@ begin
     if gravity_vm_ismini(vm) then
       exit;
     gravity_vm_setvalue(vm, GravitySysUtilsClassName, VALUE_FROM_OBJECT(GravitySysUtilsClass));
-    gravity_vm_setvalue(vm, GravityDateTimeClassName, VALUE_FROM_OBJECT(GravityDateTimeClass));
-    gravity_vm_setvalue(vm, GravityDateClassName, VALUE_FROM_OBJECT(GravityDateClass));
-    gravity_vm_setvalue(vm, GravityTimeClassName, VALUE_FROM_OBJECT(GravityTimeClass));
   end;
 end;
 
@@ -436,18 +599,8 @@ begin
     exit;
   with GravityEng do
   begin
-    gravity_class_free(nil, gravity_class_get_meta(GravityTimeClass));
-    gravity_class_free(nil, GravityTimeClass);
-    gravity_class_free(nil, gravity_class_get_meta(GravityDateClass));
-    gravity_class_free(nil, GravityDateClass);
-    gravity_class_free(nil, gravity_class_get_meta(GravityDateTimeClass));
-    gravity_class_free(nil, GravityDateTimeClass);
     gravity_class_free(nil, gravity_class_get_meta(GravitySysUtilsClass));
     gravity_class_free(nil, GravitySysUtilsClass);
-
-    GravityTimeClass := nil;
-    GravityDateClass := nil;
-    GravityDateTimeClass := nil;
     GravitySysUtilsClass := nil;
   end;
   sysutils_initialized := False;
