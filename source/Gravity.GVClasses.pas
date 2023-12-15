@@ -188,9 +188,13 @@ begin
     end
     else if closure^.f^.tag = EXEC_TYPE_BRIDGED then
       if is_property then
-        host_bridge_free_var(closure^.f^.xdata)
-      else
+      begin
+        host_bridge_free_var(closure^.f^.xdata);
+        closure^.f^.xdata := nil;
+      end else begin
         host_bridge_free_func(closure^.f^.xdata);
+        closure^.f^.xdata := nil;
+      end;
     if closure^.f^.xdata <> nil then
       host_bridge_free_var(closure^.f^.xdata);
     gravity_function_free(nil, closure^.f);
@@ -719,7 +723,7 @@ var
     begin
       gravity_class_bind(AKlass, AnsiString(LProperty.Name),
           NEW_CLOSURE_VALUE_SPECIAL(AnsiString(LMethod.Name),
-          0, AGetterRec, ASetterRec));
+          GRAVITY_BRIDGE_INDEX, AGetterRec, ASetterRec));
     end;
   end;
 
