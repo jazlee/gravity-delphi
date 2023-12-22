@@ -7,7 +7,7 @@ uses
 
 procedure GravitySysUtilsInit;
 procedure GravitySysUtilsRegister(vm: Pgravity_vm);
-procedure GravitySysUtilsFree;
+procedure GravitySysUtilsFree(vm: Pgravity_vm = nil);
 
 
 implementation
@@ -590,7 +590,7 @@ begin
   end;
 end;
 
-procedure GravitySysUtilsFree;
+procedure GravitySysUtilsFree(vm: Pgravity_vm);
 begin
   if not sysutils_initialized then
     exit;
@@ -599,12 +599,15 @@ begin
     exit;
   with GravityEng do
   begin
-    gravity_class_free(nil, gravity_class_get_meta(GravitySysUtilsClass));
-    gravity_class_free(nil, GravitySysUtilsClass);
+    gravity_class_free_core(nil, gravity_class_get_meta(GravitySysUtilsClass));
+    gravity_class_free_core(nil, GravitySysUtilsClass);
     GravitySysUtilsClass := nil;
   end;
   sysutils_initialized := False;
 end;
+
+initialization
+  RegisterGravityModule(GravitySysUtilsRegister, GravitySysUtilsFree);
 
 
 

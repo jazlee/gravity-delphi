@@ -41,16 +41,23 @@ type
     property GravityClass: Pgravity_class_t read FGravityClass;
   end;
 
+  TGravityModuleProc = procedure(VM: Pgravity_vm);
+  TGravityDelegateProc = procedure(vm: Pgravity_vm);
+
 function GravityCall(AVm: Pgravity_vm; AFunc, ASender: gravity_value_t;
   Args: array of const): Variant;
 
-procedure BindNativeClass(AVm: Pgravity_vm);
-procedure UnbindNativeClass(AVm: Pgravity_vm);
+
+
+procedure BindNativeModules(AVm: Pgravity_vm);
+procedure UnbindNativeModules(AVm: Pgravity_vm);
 procedure RegisterGravityClass(AClass: TGravityWrapperBaseClass);
 procedure RegisterGravityClasses(AClasses: array of TGravityWrapperBaseClass);
 procedure RegisterGravityName(const AVarName: String);
 procedure UnRegisterGravityClass(AClass: TGravityWrapperBaseClass);
 procedure UnRegisterGravityClasses(AClasses: array of TGravityWrapperBaseClass);
+procedure RegisterGravityModule(ARegProc, AUnregProc: TGravityModuleProc);
+procedure RegisterGravityDelegate(ADelegateProc: TGravityDelegateProc);
 function FindNativeClass(const ClassName: string): TGravityWrapperBaseClass;
 function GetNativeClass(const AClassName: string): TGravityWrapperBaseClass;
 function GetGravityClass(const AClassName: string): Pgravity_class_t;
@@ -113,14 +120,27 @@ type
     function CollectionNames: TArray<String>;
   end;
 
+  TGravityModuleItem = class(TCollectionItem)
+  private
+    FRegisterProc: TGravityModuleProc;
+    FUnregisterProc: TGravityModuleProc;
+
+  public
+    property RegisterProc: TGravityModuleProc read FRegisterProc;
+    property UnregisterProc: TGravityModuleProc read FUnregisterProc;
+  end;
+
+  TGravityModuleList = class(TCollection)
+  public
+    constructor Create;
+  end;
+
   TGravityFuncType = (ftMethod = 0, ftPropGetter, ftPropSetter,
     ftFieldGetter, ftFieldSetter);
   PNativeFunctionRecord = ^TNativeFunctionRecord;
   TNativeFunctionRecord = record
     FuncType: TGravityFuncType;
     FuncName: PAnsiChar;
-    NArgs: Integer;
-    ClassItem: TGravityClassItem;
   end;
 
 function host_bridge_initinstance(vm: Pgravity_vm; xdata: pointer;
@@ -135,20 +155,22 @@ end;
 
 procedure host_bridge_free_instance(vm: Pgravity_vm;
   instance: Pgravity_instance_t); cdecl;
+var
+  AObjInstance: TObject;
 begin
+  if Assigned(instance.xdata) then  
   with GravityEng do
   begin
+    AObjInstance := TObject(instance.xdata);
+    if Assigned(AObjInstance) then
+    begin
+      if AObjInstance.InheritsFrom(TGravityWrapperBase) then
+        TGravityWrapperBase(AObjInstance).FGravityInstance := nil;
+      AObjInstance.Free;
+    end;
+    instance.xdata := nil;
   end;
 end;
-
-procedure host_bridge_free_var(bridge_var: Pointer); cdecl;
-begin
-  with GravityEng do
-  begin
-    FreeMem(bridge_var);
-  end;
-end;
-
 
 procedure host_bridge_free_func(bridge_var: Pointer); cdecl;
 var
@@ -158,13 +180,13 @@ begin
   with GravityEng do
   begin
     AFunc := PNativeFunctionRecord(bridge_var);
-    FreeMem(AFunc^.FuncName, Length(AFunc^.FuncName) + 1);
-    FreeMem(AFunc, SizeOf(TNativeFunctionRecord));
+    FreeMem(AFunc^.FuncName);
+    FreeMem(AFunc);
   end;
 end;
 
 procedure host_bridge_free_closure(vm: Pgravity_vm;
-  closure: Pgravity_closure_t; const is_property: Boolean); cdecl;
+  closure: Pgravity_closure_t); cdecl;
 var
   AGetter, ASetter: Pgravity_closure_t;
 begin
@@ -173,32 +195,37 @@ begin
   begin
     if closure^.f^.tag = EXEC_TYPE_SPECIAL then
     begin
-      if closure^.f^.f10.f3.index <> GRAVITY_BRIDGE_INDEX then
+      if closure^.f^.f10.f3.index = GRAVITY_BRIDGE_INDEX then
       begin
         if Assigned(closure^.f^.xdata) then
-          host_bridge_free_var(closure^.f^.xdata);
+          host_bridge_free_func(closure^.f^.xdata);
         closure^.f^.xdata := nil;
         AGetter := closure^.f^.f10.f3.special[0];
+        closure^.f^.f10.f3.special[0] := nil;
         ASetter := nil;
         if (closure^.f^.f10.f3.special[0] <> closure^.f^.f10.f3.special[1]) then
+        begin
           ASetter := closure^.f^.f10.f3.special[1];
-        host_bridge_free_closure(vm, AGetter, True);
-        host_bridge_free_closure(vm, ASetter, True);
+          closure^.f^.f10.f3.special[1] := nil;
+        end;
+        host_bridge_free_closure(vm, AGetter);
+        host_bridge_free_closure(vm, ASetter);
+        gravity_closure_free(nil, AGetter);
+        gravity_closure_free(nil, ASetter);
       end;
     end
     else if closure^.f^.tag = EXEC_TYPE_BRIDGED then
-      if is_property then
-      begin
-        host_bridge_free_var(closure^.f^.xdata);
-        closure^.f^.xdata := nil;
-      end else begin
-        host_bridge_free_func(closure^.f^.xdata);
-        closure^.f^.xdata := nil;
-      end;
+    begin
+      host_bridge_free_func(closure^.f^.xdata);
+      closure^.f^.xdata := nil;
+    end;
     if closure^.f^.xdata <> nil then
-      host_bridge_free_var(closure^.f^.xdata);
+    begin
+      host_bridge_free_func(closure^.f^.xdata);
+      closure^.f^.xdata := nil;
+    end;
     gravity_function_free(nil, closure^.f);
-    gravity_closure_free(nil, closure);
+    closure^.f := nil;
   end;
 end;
 
@@ -210,9 +237,11 @@ begin
   if Assigned(klass^.xdata) then
     with GravityEng do
     begin
+      klass^.xdata := nil;
       AMeta := gravity_class_get_meta(klass);
       gravity_hash_iterate(AMeta^.htable, host_bridge_hash_iterate, vm);
       gravity_hash_iterate(klass^.htable, host_bridge_hash_iterate, vm);
+      gravity_class_free(nil, AMeta);
     end;
 end;
 
@@ -223,7 +252,7 @@ begin
     if OBJECT_ISA_INSTANCE(obj) then
       host_bridge_free_instance(vm, Pgravity_instance_t(obj))
     else if OBJECT_ISA_CLOSURE(obj) then
-      host_bridge_free_closure(vm, Pgravity_closure_t(obj), False)
+      host_bridge_free_closure(vm, Pgravity_closure_t(obj))
     else if OBJECT_ISA_CLASS(obj) then
       host_bridge_free_class(vm, Pgravity_class_t(obj));
   end;
@@ -236,7 +265,7 @@ var
   AFuncRec: PNativeFunctionRecord;
   AValue: gravity_value_t;
   AInstVal: Pgravity_instance_t;
-  AObj: TGravityWrapperBase;
+  AObjInstance: TGravityWrapperBase;
   ARetValue: TValue;
 
   AParams: array of TValue;
@@ -253,16 +282,17 @@ begin
     AFuncRec := PNativeFunctionRecord(xdata);
     if AFuncRec <> nil then
     begin
+      gravity_gc_setenabled(vm, False);
       AValue := GET_VALUE(Args, 0);
       if VALUE_ISA_INSTANCE(AValue) then
       begin
-        AObj := TGravityWrapperBase(gravity_value_xdata(AValue));
+        AObjInstance := TGravityWrapperBase(gravity_value_xdata(AValue));
         LContext := TRttiContext.Create;
         try
-          LType := LContext.GetType(AFuncRec.ClassItem.NativeClass);
+          LType := LContext.GetType(AObjInstance.ClassType);
           LMethod := LType.GetMethod(String(AnsiString(AFuncRec^.FuncName)));
-          if (AObj <> nil) and (LMethod <> nil) and
-            AObj.InheritsFrom(TGravityWrapperBase) then
+          if (AObjInstance <> nil) and (LMethod <> nil) and
+            AObjInstance.InheritsFrom(TGravityWrapperBase) then
           begin
             if NArgs > 1 then
             begin
@@ -299,9 +329,10 @@ begin
                 end;
               end;
               try
-                ARetValue := LMethod.Invoke(AObj, AParams);
+                ARetValue := LMethod.Invoke(AObjInstance, AParams);
                 if not ARetValue.IsEmpty then
                 begin
+                  gravity_gc_setenabled(vm, True);
                   if ARetValue.Kind = tkInteger then
                     Result := RETURN_VALUE(vm, VALUE_FROM_INT(ARetValue.AsInteger), vindex)
                   else if ARetValue.Kind = tkInt64 then
@@ -326,30 +357,206 @@ begin
             end;
           end;
         finally
+          gravity_gc_setenabled(vm, True);
           LContext.Free;
         end;
       end;
-    end;
+    end else
+      Result := RETURN_ERROR(vm, 'Unable to process bridge request', vindex)
   end;
 end;
 
 function host_bridge_getvalue(vm: Pgravity_vm; xdata: pointer;
   target: gravity_value_t; const key: PAnsiChar; vindex: UInt32)
   : Boolean; cdecl;
+var
+  AFuncRec: PNativeFunctionRecord;
+  AObjInstance: TGravityWrapperBase;
+  ARetValue: TValue;
+
+  LContext: TRttiContext;
+  LType: TRttiType;
+  LProp: TRttiProperty;
+  LField: TRttiField;
+  AStr: AnsiString;
 begin
   with GravityEng do
   begin
-    Result := False;
+    Result := RETURN_NOVALUE;
+    AFuncRec := PNativeFunctionRecord(xdata);
+    if VALUE_ISA_INSTANCE(target) and (AFuncRec <> nil)then
+    begin
+      AObjInstance:= TGravityWrapperBase(gravity_value_xdata(target));
+      LContext := TRttiContext.Create;
+      try
+        gravity_gc_setenabled(vm, False);
+        LType := LContext.GetType(AObjInstance.ClassType);
+        if AFuncRec.FuncType = ftPropGetter then
+        begin
+          LProp := LType.GetProperty(String(AnsiString(AFuncRec^.FuncName)));
+          if (AObjInstance <> nil) and (LProp <> nil) and
+            AObjInstance.InheritsFrom(TGravityWrapperBase) then
+          try
+            ARetValue := LProp.GetValue(AObjInstance);
+            gravity_gc_setenabled(vm, True);
+            if not ARetValue.IsEmpty then
+            begin
+              if ARetValue.Kind = tkInteger then
+                Result := RETURN_VALUE(vm, VALUE_FROM_INT(ARetValue.AsInteger), vindex)
+              else if ARetValue.Kind = tkInt64 then
+                Result := RETURN_VALUE(vm, VALUE_FROM_INT(ARetValue.AsInt64), vindex)
+              else if ARetValue.Kind = tkFloat then
+                Result := RETURN_VALUE(vm,
+                  VALUE_FROM_FLOAT(ARetValue.AsExtended), vindex)
+              else if (ARetValue.Kind = tkString) or (ARetValue.Kind = tkChar)
+                or (ARetValue.Kind = tkWString) or (ARetValue.Kind = tkWChar)
+                or (ARetValue.Kind = tkUString) then
+              begin
+                AStr := AnsiString(ARetValue.AsString);
+                Result := RETURN_VALUE(vm, VALUE_FROM_STRING(vm, AStr), vindex)
+              end;
+            end else
+              Result := RETURN_VALUE(vm, VALUE_FROM_NULL, vindex);
+          except
+            on E:Exception do
+              begin
+                Result := RETURN_ERROR(vm, AnsiString(E.Message), vindex);
+              end;
+          end;
+        end else
+        begin
+          LField := LType.GetField(String(AnsiString(AFuncRec^.FuncName)));
+          if (AObjInstance <> nil) and (LField <> nil) and
+            AObjInstance.InheritsFrom(TGravityWrapperBase) then
+          try
+            ARetValue := LField.GetValue(AObjInstance);
+            gravity_gc_setenabled(vm, True);
+            if not ARetValue.IsEmpty then
+            begin
+              if ARetValue.Kind = tkInteger then
+                Result := RETURN_VALUE(vm, VALUE_FROM_INT(ARetValue.AsInteger), vindex)
+              else if ARetValue.Kind = tkInt64 then
+                Result := RETURN_VALUE(vm, VALUE_FROM_INT(ARetValue.AsInt64), vindex)
+              else if ARetValue.Kind = tkFloat then
+                Result := RETURN_VALUE(vm,
+                  VALUE_FROM_FLOAT(ARetValue.AsExtended), vindex)
+              else if (ARetValue.Kind = tkString) or (ARetValue.Kind = tkChar)
+                or (ARetValue.Kind = tkWString) or (ARetValue.Kind = tkWChar)
+                or (ARetValue.Kind = tkUString) then
+              begin
+                AStr := AnsiString(ARetValue.AsString);
+                Result := RETURN_VALUE(vm, VALUE_FROM_STRING(vm, AStr), vindex)
+              end;
+            end else
+              Result := RETURN_VALUE(vm, VALUE_FROM_NULL, vindex);
+          except
+            on E:Exception do
+              begin
+                Result := RETURN_ERROR(vm, AnsiString(E.Message), vindex);
+              end;
+          end;
+        end;
+      finally
+        gravity_gc_setenabled(vm, True);
+        LContext.Free;
+      end;
+    end else
+      Result := RETURN_ERROR(vm, 'Unable to process bridge request', vindex)
   end;
 end;
 
 function host_bridge_setvalue(vm: Pgravity_vm; xdata: pointer;
   target: gravity_value_t; const key: PAnsiChar; value: gravity_value_t)
   : Boolean; cdecl;
+var
+  AObjInstance: TGravityWrapperBase;
+  AFuncRec: PNativeFunctionRecord;
+  AValue: TValue;
+  LContext: TRttiContext;
+  LType: TRttiType;
+  LProp: TRttiProperty;
+  LField: TRttiField;
+  AInstVal: Pgravity_instance_t;
 begin
+  LContext := TRttiContext.Create;
   with GravityEng do
-  begin
-    Result := False;
+  try
+    gravity_gc_setenabled(vm, False);
+    Result := RETURN_NOVALUE;
+    AObjInstance:= TGravityWrapperBase(gravity_value_xdata(target));
+    AFuncRec := PNativeFunctionRecord(xdata);
+    if VALUE_ISA_INSTANCE(target) and (AFuncRec <> nil)then
+    begin
+      LType := LContext.GetType(AObjInstance.ClassType);
+      if AFuncRec^.FuncType = ftPropSetter then
+      begin
+        LProp := LType.GetProperty(String(AnsiString(AFuncRec^.FuncName)));
+        if VALUE_ISA_BASIC_TYPE(value) then
+        begin
+          if VALUE_ISA_INT(value) then
+            AValue := TValue.From(VALUE_AS_INT(value))
+          else if VALUE_ISA_FLOAT(value) then
+            AValue := TValue.From(VALUE_AS_FLOAT(value))
+          else if VALUE_ISA_STRING(value) then
+            AValue := TValue.From(String(AnsiString(VALUE_AS_CSTRING(value))))
+          else if VALUE_ISA_BOOL(value) then
+            AValue := TValue.From(VALUE_AS_BOOL(value))
+        end else
+        begin
+          if VALUE_ISA_INSTANCE(value) then
+          begin
+            AInstVal := VALUE_AS_INSTANCE(value);
+            if (AInstVal.xdata <> nil) and
+              (TObject(AInstVal).InheritsFrom(TGravityWrapperBase))
+            then
+              AValue := TValue.From(TObject(AInstVal))
+          end;
+        end;
+        try
+          LProp.SetValue(AObjInstance, AValue);
+        except
+          on E:Exception do
+            begin
+              Result := RETURN_NOVALUE;
+            end;
+        end;
+      end else
+      begin
+        LField := LType.GetField(String(AnsiString(AFuncRec^.FuncName)));
+        if VALUE_ISA_BASIC_TYPE(value) then
+        begin
+          if VALUE_ISA_INT(value) then
+            AValue := TValue.From(VALUE_AS_INT(value))
+          else if VALUE_ISA_FLOAT(value) then
+            AValue := TValue.From(VALUE_AS_FLOAT(value))
+          else if VALUE_ISA_STRING(value) then
+            AValue := TValue.From(String(AnsiString(VALUE_AS_CSTRING(value))))
+          else if VALUE_ISA_BOOL(value) then
+            AValue := TValue.From(VALUE_AS_BOOL(value))
+        end else
+        begin
+          if VALUE_ISA_INSTANCE(value) then
+          begin
+            AInstVal := VALUE_AS_INSTANCE(value);
+            if (AInstVal.xdata <> nil) and
+              (TObject(AInstVal).InheritsFrom(TGravityWrapperBase))
+            then
+              AValue := TValue.From(TObject(AInstVal))
+          end;
+        end;
+        try
+          LField.SetValue(AObjInstance, AValue);
+        except
+          on E:Exception do
+            begin
+              Result := RETURN_NOVALUE;
+            end;
+        end;
+      end;
+    end;
+  finally
+    gravity_gc_setenabled(vm, True);
+    LContext.Free;
   end;
 end;
 
@@ -359,7 +566,7 @@ function host_bridge_getundef(vm: Pgravity_vm; xdata: pointer;
 begin
   with GravityEng do
   begin
-    Result := False;
+    Result := RETURN_NOVALUE;
   end;
 end;
 
@@ -369,7 +576,7 @@ function host_bridge_setundef(vm: Pgravity_vm; xdata: pointer;
 begin
   with GravityEng do
   begin
-    Result := False;
+    Result := RETURN_NOVALUE;
   end;
 end;
 
@@ -419,10 +626,11 @@ procedure host_bridge_hash_iterate(hashtable: Pgravity_hash_t;
   key, value: gravity_value_t; data: pointer);
 begin
   with GravityEng do
-  begin
     if gravity_value_isobject(value) then
+    begin
       host_bridge_free(data, VALUE_AS_OBJECT(value));
-  end;
+      gravity_object_free(nil, VALUE_AS_OBJECT(value));
+    end;
 end;
 
 { TAnsiStrings }
@@ -580,13 +788,16 @@ type
     procedure UnregisterClass(AClass: TGravityWrapperBaseClass);
     property Active: Boolean read FActive write FActive;
     property ClassNames: TArray<String> read GetClassNames;
+    property WrapperList: TGravityClassList read FWrapperList;
   end;
 
   TGravityClassRegs = class
   private
+    FModules: TGravityModuleList;
     FNameList: TAnsiStrings;
     FWrapperGroups: TList;
     FLock: TRTLCriticalSection;
+    FDelegates: TList;
     function FindGroup(AClass: TGravityWrapperBaseClass): TGravityClassReg;
     function GetName(I: Integer): string;
   public
@@ -602,6 +813,9 @@ type
     procedure UnregisterClass(AClass: TGravityWrapperBaseClass);
 
     property Names[I: Integer]: string read GetName;
+    property Modules: TGravityModuleList read FModules;
+    property Delegates: TList read FDelegates;
+    property WrapperGroups: TList read FWrapperGroups;
   end;
 
 var
@@ -627,13 +841,15 @@ begin
     ADlgt^.bridge_initinstance := host_bridge_initinstance;
     ADlgt^.bridge_getvalue := host_bridge_getvalue;
     ADlgt^.bridge_setvalue := host_bridge_setvalue;
-    ADlgt^.bridge_getundef := host_bridge_getundef;
-    ADlgt^.bridge_setundef := host_bridge_setundef;
     ADlgt^.bridge_execute := host_bridge_execute;
-    ADlgt^.bridge_blacken := host_bridge_blacken;
-    ADlgt^.bridge_string := host_bridge_string;
-    ADlgt^.bridge_equals := host_bridge_equals;
-    ADlgt^.bridge_clone := host_bridge_clone;
+    // ...
+    // ADlgt^.bridge_getundef := host_bridge_getundef;
+    // ADlgt^.bridge_setundef := host_bridge_setundef;
+    // ADlgt^.bridge_blacken := host_bridge_blacken;
+    // ADlgt^.bridge_string := host_bridge_string;
+    // ADlgt^.bridge_equals := host_bridge_equals;
+    // ADlgt^.bridge_clone := host_bridge_clone;
+    // ...
     ADlgt^.bridge_size := host_bridge_size;
     ADlgt^.bridge_free := host_bridge_free;
   end;
@@ -676,7 +892,7 @@ var
   LType: TRttiType;
   LMethod: TRttiMethod;
   LProperty: TRttiProperty;
-  LFields: TRttiField;
+  LField: TRttiField;
 
   procedure InternalRegisterMethod(AKlass: Pgravity_class_t);
   var
@@ -686,7 +902,6 @@ var
     begin
       GetMem(AFuncRec, SizeOf(TNativeFunctionRecord));
       AFuncRec^.FuncType := ftMethod;
-      AFuncRec^.ClassItem := Self;
       GetMem(AFuncRec^.FuncName, Length(AnsiString(LMethod.Name)) + 1);
       System.AnsiStrings.StrPCopy(AFuncRec^.FuncName, AnsiString(LMethod.Name));
       gravity_class_bind(AKlass, AnsiString(LMethod.Name),
@@ -698,37 +913,59 @@ var
   var
     LPropInfo: PPropInfo;
     AGetterRec, ASetterRec: PNativeFunctionRecord;
+    CGetter, CSetter: Pgravity_closure_t;
 
   begin
-    LPropInfo := TRttiInstanceProperty(LProperty).PropInfo;
-    AGetterRec := nil;
-    ASetterRec := nil;
-    if LPropInfo.GetProc <> nil then
-    begin
-      GetMem(AGetterRec, SizeOf(TNativeFunctionRecord));
-      AGetterRec^.FuncType := ftPropGetter;
-      AGetterRec^.ClassItem := Self;
-      GetMem(AGetterRec^.FuncName, Length(AnsiString(LProperty.Name)) + 1);
-      System.AnsiStrings.StrPCopy(AGetterRec^.FuncName, AnsiString(LProperty.Name));
-    end;
-    if LPropInfo.SetProc <> nil then
-    begin
-      GetMem(ASetterRec, SizeOf(TNativeFunctionRecord));
-      ASetterRec^.FuncType := ftPropSetter;
-      ASetterRec^.ClassItem := Self;
-      GetMem(ASetterRec^.FuncName, Length(AnsiString(LProperty.Name)) + 1);
-      System.AnsiStrings.StrPCopy(ASetterRec^.FuncName, AnsiString(LProperty.Name));
-    end;
     with GravityEng do
     begin
+      LPropInfo := TRttiInstanceProperty(LProperty).PropInfo;
+      CGetter := nil;
+      CSetter := nil;
+      if LPropInfo.GetProc <> nil then
+      begin
+        GetMem(AGetterRec, SizeOf(TNativeFunctionRecord));
+        AGetterRec^.FuncType := ftPropGetter;
+        GetMem(AGetterRec^.FuncName, Length(AnsiString(LProperty.Name)) + 1);
+        System.AnsiStrings.StrPCopy(AGetterRec^.FuncName, AnsiString(LProperty.Name));
+        CGetter := gravity_closure_new(nil, NEW_FUNCTION_BRIDGED(AnsiString(LProperty.Name), AGetterRec));
+      end;
+      if LPropInfo.SetProc <> nil then
+      begin
+        GetMem(ASetterRec, SizeOf(TNativeFunctionRecord));
+        ASetterRec^.FuncType := ftPropSetter;
+        GetMem(ASetterRec^.FuncName, Length(AnsiString(LProperty.Name)) + 1);
+        System.AnsiStrings.StrPCopy(ASetterRec^.FuncName, AnsiString(LProperty.Name));
+        CSetter := gravity_closure_new(nil, NEW_FUNCTION_BRIDGED(AnsiString(LProperty.Name), ASetterRec));
+      end;
       gravity_class_bind(AKlass, AnsiString(LProperty.Name),
-          NEW_CLOSURE_VALUE_SPECIAL(AnsiString(LMethod.Name),
-          GRAVITY_BRIDGE_INDEX, AGetterRec, ASetterRec));
+          NEW_CLOSURE_VALUE_SPECIAL(AnsiString(LProperty.Name),
+          GRAVITY_BRIDGE_INDEX, CGetter, CSetter));
     end;
   end;
 
   procedure InternalRegisterField(AKlass: Pgravity_class_t);
+  var
+    AGetterRec, ASetterRec: PNativeFunctionRecord;
+    CGetter, CSetter: Pgravity_closure_t;
   begin
+    with GravityEng do
+    begin
+      GetMem(AGetterRec, SizeOf(TNativeFunctionRecord));
+      AGetterRec^.FuncType := ftFieldGetter;
+      GetMem(AGetterRec^.FuncName, Length(AnsiString(LField.Name)) + 1);
+      System.AnsiStrings.StrPCopy(AGetterRec^.FuncName, AnsiString(LField.Name));
+      CGetter := gravity_closure_new(nil, NEW_FUNCTION_BRIDGED(AnsiString(LField.Name), AGetterRec));
+
+      GetMem(ASetterRec, SizeOf(TNativeFunctionRecord));
+      ASetterRec^.FuncType := ftFieldSetter;
+      GetMem(ASetterRec^.FuncName, Length(AnsiString(LField.Name)) + 1);
+      System.AnsiStrings.StrPCopy(ASetterRec^.FuncName, AnsiString(LField.Name));
+      CSetter := gravity_closure_new(nil, NEW_FUNCTION_BRIDGED(AnsiString(LField.Name), ASetterRec));
+
+      gravity_class_bind(AKlass, AnsiString(LField.Name),
+          NEW_CLOSURE_VALUE_SPECIAL(AnsiString(LField.Name),
+          GRAVITY_BRIDGE_INDEX, CGetter, CSetter));
+    end;
   end;
 
 begin
@@ -743,11 +980,12 @@ begin
       if LType = nil then
         Exit;
       try
-        FGravityClass := gravity_class_new_pair(vm,
+        FGravityClass := gravity_class_new_pair(nil,
           AnsiString(FNativeClass.ClassName), nil, 0, 0);
         AMeta := gravity_class_get_meta(FGravityClass);
+        gravity_class_setxdata(FGravityClass, Self);
         for LMethod in LType.GetMethods do
-          if LMethod.Visibility >= mvPublished then
+          if LMethod.Visibility >= mvPublic then
             case LMethod.MethodKind of
               mkProcedure, mkFunction:
                 InternalRegisterMethod(FGravityClass);
@@ -755,14 +993,12 @@ begin
                 InternalRegisterMethod(AMeta);
             end;
         for LProperty in LType.GetProperties do
-          if (LProperty.Visibility >= mvPublished) and
+          if (LProperty.Visibility >= mvPublic) and
             (LProperty is TRttiInstanceProperty) then
               InternalRegisterProperty(FGravityClass);
-        for LFields in LType.GetFields do
-        begin
-          if LFields.Visibility >= mvPublished then
+        for LField in LType.GetFields do
+          if LField.Visibility >= mvPublic then
             InternalRegisterField(FGravityClass);
-        end;
       finally
         LContext.Free;
       end;
@@ -793,7 +1029,9 @@ begin
     AMeta := gravity_class_get_meta(FGravityClass);
     gravity_hash_iterate(AMeta^.htable, host_bridge_hash_iterate, vm);
     gravity_hash_iterate(FGravityClass^.htable,
-      host_bridge_hash_iterate, vm);
+       host_bridge_hash_iterate, vm);
+    gravity_class_free(nil, FGravityClass);
+    FGravityClass := nil;
   end;
 end;
 
@@ -941,6 +1179,8 @@ begin
   FWrapperGroups.Add(AGroup);
   AGroup.Active := True;
   FNameList := TAnsiStrings.Create;
+  FModules := TGravityModuleList.Create;
+  FDelegates := TList.Create;
 end;
 
 destructor TGravityClassRegs.Destroy;
@@ -950,6 +1190,8 @@ begin
   for I := 0 to FWrapperGroups.Count - 1 do
     TGravityClassReg(FWrapperGroups[I]).Free;
   FWrapperGroups.Free;
+  FDelegates.Free;
+  FModules.Free;
   DeleteCriticalSection(FLock);
   inherited Destroy;
 end;
@@ -1095,26 +1337,33 @@ begin
     UnRegisterGravityClass(AClasses[I]);
 end;
 
-procedure BindNativeClass(AVm: Pgravity_vm);
+procedure BindNativeModules(AVm: Pgravity_vm);
 var
   AGroup, AItem: pointer;
 begin
   with GravityEng do
   begin
     gravity_register_bridges(AVm);
-    for AGroup in GravityRegGroups.FWrapperGroups do
+    for AItem in GravityRegGroups.Delegates do
+      if AItem <> nil then
+        TGravityDelegateProc(AItem)(AVm);
+    for AItem in GravityRegGroups.Modules do
+      TGravityModuleItem(AItem).RegisterProc(AVm);
+    for AGroup in GravityRegGroups.WrapperGroups do
       for AItem in TGravityClassReg(AGroup).FWrapperList do
         TGravityClassItem(AItem).RegisterClass(AVm);
   end;
 end;
 
-procedure UnbindNativeClass(AVm: Pgravity_vm);
+procedure UnbindNativeModules(AVm: Pgravity_vm);
 var
   AGroup, AItem: pointer;
 begin
   with GravityEng do
   begin
-    for AGroup in GravityRegGroups.FWrapperGroups do
+    for AItem in GravityRegGroups.Modules do
+      TGravityModuleItem(AItem).UnregisterProc(AVm);
+    for AGroup in GravityRegGroups.WrapperGroups do
       for AItem in TGravityClassReg(AGroup).FWrapperList do
         TGravityClassItem(AItem).UnregisterClass(AVm);
   end;
@@ -1163,9 +1412,11 @@ begin
     AClass := GetGravityClass(AObj.ClassName);
     if AClass <> nil then
     begin
+      gravity_gc_setenabled(AVm, False);
       AInstance := gravity_instance_new(AVm, AClass);
       gravity_instance_setxdata(AInstance, AObj);
       AObj.FGravityInstance := AInstance;
+      gravity_gc_setenabled(AVm, True);
       gravity_vm_setvalue(AVm, AnsiString(AVarName),
         VALUE_FROM_OBJECT(AInstance));
       GravityRegGroups.RegisterName(AVarName);
@@ -1275,6 +1526,27 @@ begin
       end;
     end;
   end;
+end;
+
+procedure RegisterGravityModule(ARegProc, AUnregProc: TGravityModuleProc);
+begin
+  with TGravityModuleItem(GravityRegGroups.FModules.Add) do
+  begin
+    FRegisterProc := ARegProc;
+    FUnregisterProc := AUnregProc;
+  end;
+end;
+
+procedure RegisterGravityDelegate(ADelegateProc: TGravityDelegateProc);
+begin
+  GravityRegGroups.Delegates.Add(@ADelegateProc);
+end;
+
+{ TGravityModuleList }
+
+constructor TGravityModuleList.Create;
+begin
+  inherited Create(TGravityModuleItem);
 end;
 
 initialization
